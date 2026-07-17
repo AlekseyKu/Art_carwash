@@ -1,0 +1,61 @@
+{
+  "name": "@art/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Сенсорная оболочка кассы Автомойка АРТ (Electron kiosk)",
+  "main": "src/main.cjs",
+  "scripts": {
+    "dev": "electron .",
+    "pack:win": "electron-builder --win portable --x64",
+    "dist": "node scripts/prepare-resources.mjs && electron-builder --win portable --x64"
+  },
+  "build": {
+    "appId": "ru.artcarwash.pos",
+    "productName": "Автомойка АРТ",
+    "copyright": "Автомойка АРТ",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/web",
+        "to": "web",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/api",
+        "to": "api",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "ArtCarwash-POS-${version}-portable.${ext}"
+    },
+    "portable": {
+      "artifactName": "ArtCarwash-POS-${version}-portable.${ext}"
+    },
+    "asar": true
+  },
+  "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.1"
+  }
+}

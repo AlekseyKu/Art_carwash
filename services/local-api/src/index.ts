@@ -1,7 +1,10 @@
 import cors from "@fastify/cors";
+import fastifyStatic from "@fastify/static";
 import { calcDiscountKopecks } from "@art/shared";
 import bcrypt from "bcryptjs";
 import Fastify from "fastify";
+import fs from "node:fs";
+import path from "node:path";
 import { nanoid } from "nanoid";
 import {
   attachClientToOrder,
@@ -77,8 +80,9 @@ function requireAdmin(req: { headers: { authorization?: string } }) {
 }
 
 app.setErrorHandler((err, _req, reply) => {
-  const status = (err as { statusCode?: number }).statusCode ?? 400;
-  reply.code(status).send({ error: err.message });
+  const e = err as Error & { statusCode?: number };
+  const status = e.statusCode ?? 400;
+  reply.code(status).send({ error: e.message });
 });
 
 app.get("/api/health", async () => ({ ok: true, brand: "Автомойка АРТ" }));
@@ -684,6 +688,21 @@ app.post<{
     totalKopecks: Math.max(0, req.body.subtotalKopecks - discountKopecks),
   };
 });
+
+const webDist = process.env.ART_WEB_DIST?.trim();
+if (webDist && fs.existsSync(path.join(webDist, "index.html"))) {
+  await app.register(fastifyStatic, {
+    root: path.resolve(webDist),
+    wildcard: false,
+  });
+  app.setNotFoundHandler((req, reply) => {
+    if (req.url.startsWith("/api") || req.url.startsWith("/cloud-api")) {
+      return reply.code(404).send({ error: "Not found" });
+    }
+    return reply.sendFile("index.html");
+  });
+  console.log(`[web] static from ${path.resolve(webDist)}`);
+}
 
 const port = Number(process.env.PORT ?? 3001);
 await app.listen({ port, host: "0.0.0.0" });

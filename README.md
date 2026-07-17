@@ -21,6 +21,16 @@ pnpm dev
 
 Только мойка (без облака): `pnpm dev:local`
 
+### Сенсорная касса (Windows)
+
+| Команда | Что делает |
+|---------|------------|
+| `pnpm kiosk` | Edge/Chrome kiosk + local-api (быстрый тест) |
+| `pnpm dist:pos` | Portable exe → `apps/desktop/release/` |
+| `pnpm dev:desktop` | Electron kiosk в режиме разработки |
+
+Подробнее: [`doc/features/02-windows-exe-packaging.md`](doc/features/02-windows-exe-packaging.md).
+
 ## Демо-доступ
 
 | Роль | Данные |

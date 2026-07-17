@@ -8,3 +8,6 @@ data
 .DS_Store
 *.log
 coverage
+apps/desktop/resources
+apps/desktop/release
+*.tsbuildinfo

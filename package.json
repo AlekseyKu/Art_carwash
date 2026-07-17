@@ -6,10 +6,16 @@
     "dev:local": "pnpm --parallel --filter @art/local-api --filter @art/web dev",
     "dev:cloud": "pnpm --filter @art/cloud-api dev",
     "dev:bridge": "pnpm --filter @art/terminal-bridge start",
+    "dev:desktop": "pnpm --filter @art/web build && pnpm --filter @art/desktop dev",
+    "dist:pos": "pnpm --filter @art/desktop dist",
+    "kiosk": "powershell -ExecutionPolicy Bypass -File ./scripts/start-touch-kiosk.ps1",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
   }
 }
