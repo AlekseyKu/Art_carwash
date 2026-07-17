@@ -53,7 +53,8 @@ export const api = {
     request("/api/auth/logout", { method: "POST", token, body: JSON.stringify({}) }),
   catalog: () =>
     request<{
-      services: { id: string; name: string; priceKopecks: number }[];
+      tabs: CatalogTabDto[];
+      services: CatalogItemDto[];
       discounts: { id: string; name: string; type: string; value: number }[];
     }>("/api/catalog"),
   draft: (postId: number, token: string) =>
@@ -174,19 +175,66 @@ export type RecentOrderDto = {
   itemsPreview: string[];
 };
 
+export type CatalogTabDto = {
+  id: string;
+  slug: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+};
+
+export type CatalogItemDto = {
+  id: string;
+  name: string;
+  priceKopecks: number;
+  active: boolean;
+  sortOrder: number;
+  tabId: string;
+};
+
 export const adminApi = {
+  catalogTabs: (token: string) =>
+    request<CatalogTabDto[]>("/api/admin/catalog-tabs", { token }),
+  saveCatalogTab: (
+    token: string,
+    body: { name: string; slug?: string; sortOrder?: number; active?: boolean },
+    id?: string
+  ) =>
+    id
+      ? request(`/api/admin/catalog-tabs/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: body.name,
+            sortOrder: body.sortOrder ?? 0,
+            active: body.active !== false,
+          }),
+          token,
+        })
+      : request("/api/admin/catalog-tabs", {
+          method: "POST",
+          body: JSON.stringify(body),
+          token,
+        }),
+  deleteCatalogTab: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/catalog-tabs/${id}`, { method: "DELETE", token }),
   services: (token: string) =>
-    request<
-      { id: string; name: string; priceKopecks: number; active: boolean; sortOrder: number }[]
-    >("/api/admin/services", { token }),
+    request<CatalogItemDto[]>("/api/admin/services", { token }),
   saveService: (
     token: string,
-    body: { name: string; priceKopecks: number; active: boolean; sortOrder: number },
+    body: {
+      name: string;
+      priceKopecks: number;
+      active: boolean;
+      sortOrder: number;
+      tabId: string;
+    },
     id?: string
   ) =>
     id
       ? request(`/api/admin/services/${id}`, { method: "PUT", body: JSON.stringify(body), token })
       : request("/api/admin/services", { method: "POST", body: JSON.stringify(body), token }),
+  deleteService: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/services/${id}`, { method: "DELETE", token }),
   discounts: (token: string) =>
     request<{ id: string; name: string; type: string; value: number; active: boolean }[]>(
       "/api/admin/discounts",
@@ -200,6 +248,8 @@ export const adminApi = {
     id
       ? request(`/api/admin/discounts/${id}`, { method: "PUT", body: JSON.stringify(body), token })
       : request("/api/admin/discounts", { method: "POST", body: JSON.stringify(body), token }),
+  deleteDiscount: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/discounts/${id}`, { method: "DELETE", token }),
   washers: (token: string) =>
     request<{ id: string; name: string; active: boolean }[]>("/api/admin/washers", { token }),
   saveWasher: (
@@ -214,6 +264,8 @@ export const adminApi = {
           body: JSON.stringify({ ...body, pin: body.pin }),
           token,
         }),
+  deleteWasher: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/washers/${id}`, { method: "DELETE", token }),
   terminal: (token: string) => request<Record<string, unknown>>("/api/admin/terminal", { token }),
   saveTerminal: (token: string, body: Record<string, unknown>) =>
     request("/api/admin/terminal", { method: "PUT", body: JSON.stringify(body), token }),

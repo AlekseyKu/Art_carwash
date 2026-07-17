@@ -2,12 +2,23 @@ export type PaymentMethod = "cash" | "card" | "sbp";
 export type OrderStatus = "draft" | "awaiting_payment" | "paid" | "cancelled";
 export type DiscountType = "percent" | "fixed";
 
+/** Вкладка каталога на кассе (Услуги, Товары, …). */
+export interface CatalogTab {
+  id: string;
+  slug: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+}
+
 export interface Service {
   id: string;
   name: string;
   priceKopecks: number;
   active: boolean;
   sortOrder: number;
+  /** Вкладка каталога (услуги мойки / товары бара и т.п.). */
+  tabId: string;
 }
 
 export interface Discount {

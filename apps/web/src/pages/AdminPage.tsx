@@ -1,19 +1,26 @@
 import { BRAND_NAME, formatRub } from "@art/shared";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { adminApi, api, getAdminToken, setAdminToken } from "../api";
+import {
+  adminApi,
+  api,
+  getAdminToken,
+  setAdminToken,
+  type CatalogItemDto,
+  type CatalogTabDto,
+} from "../api";
 
-type Tab = "services" | "discounts" | "washers" | "terminal" | "analytics" | "security";
+type FixedTab = "discounts" | "washers" | "terminal" | "analytics" | "security" | "catalog-tabs";
+type Tab = FixedTab | `catalog:${string}`;
 
 export function AdminPage() {
   const [token, setToken] = useState(getAdminToken());
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<Tab>("services");
+  const [tab, setTab] = useState<Tab>("catalog:services");
 
-  const [services, setServices] = useState<
-    { id: string; name: string; priceKopecks: number; active: boolean; sortOrder: number }[]
-  >([]);
+  const [catalogTabs, setCatalogTabs] = useState<CatalogTabDto[]>([]);
+  const [services, setServices] = useState<CatalogItemDto[]>([]);
   const [discounts, setDiscounts] = useState<
     { id: string; name: string; type: string; value: number; active: boolean }[]
   >([]);
@@ -35,11 +42,28 @@ export function AdminPage() {
   } | null>(null);
 
   const [svcForm, setSvcForm] = useState({ name: "", priceRub: "", sortOrder: "0" });
+  const [tabForm, setTabForm] = useState({ name: "", sortOrder: "10" });
   const [discForm, setDiscForm] = useState({ name: "", type: "percent", value: "" });
   const [washerForm, setWasherForm] = useState({ name: "", pin: "" });
   const [masterForm, setMasterForm] = useState({ current: "", next: "" });
   const [syncUrl, setSyncUrl] = useState("http://127.0.0.1:3002");
   const [syncMsg, setSyncMsg] = useState("");
+
+  const activeCatalogTab = useMemo(() => {
+    if (!tab.startsWith("catalog:")) return null;
+    const key = tab.slice("catalog:".length);
+    return (
+      catalogTabs.find((t) => t.slug === key || t.id === key) ??
+      catalogTabs.find((t) => t.slug === "services") ??
+      catalogTabs[0] ??
+      null
+    );
+  }, [tab, catalogTabs]);
+
+  const itemsForActiveTab = useMemo(() => {
+    if (!activeCatalogTab) return [];
+    return services.filter((s) => s.tabId === activeCatalogTab.id);
+  }, [services, activeCatalogTab]);
 
   async function login() {
     setError("");
@@ -53,15 +77,31 @@ export function AdminPage() {
     setCode("");
   }
 
+  async function removeWithConfirm(
+    message: string,
+    action: () => Promise<unknown>
+  ) {
+    if (!window.confirm(message)) return;
+    setError("");
+    try {
+      await action();
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось удалить");
+    }
+  }
+
   async function refresh() {
     if (!token) return;
-    const [s, d, w, t, sync] = await Promise.all([
+    const [tabs, s, d, w, t, sync] = await Promise.all([
+      adminApi.catalogTabs(token),
       adminApi.services(token),
       adminApi.discounts(token),
       adminApi.washers(token),
       adminApi.terminal(token),
       adminApi.syncSettings(token),
     ]);
+    setCatalogTabs(tabs);
     setServices(s);
     setDiscounts(d);
     setWashers(w);
@@ -73,6 +113,12 @@ export function AdminPage() {
       notes: String(t.notes ?? ""),
     });
     if (sync.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
+
+    if (tab.startsWith("catalog:")) {
+      const key = tab.slice("catalog:".length);
+      const stillThere = tabs.some((ct) => ct.slug === key || ct.id === key);
+      if (!stillThere && tabs[0]) setTab(`catalog:${tabs[0].slug}`);
+    }
   }
 
   useEffect(() => {
@@ -117,8 +163,12 @@ export function AdminPage() {
     );
   }
 
-  const tabs: { id: Tab; label: string }[] = [
-    { id: "services", label: "Услуги" },
+  const navTabs: { id: Tab; label: string }[] = [
+    ...catalogTabs
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"))
+      .map((ct) => ({ id: `catalog:${ct.slug}` as Tab, label: ct.name })),
+    { id: "catalog-tabs", label: "Вкладки" },
     { id: "discounts", label: "Скидки" },
     { id: "washers", label: "Мойщики" },
     { id: "terminal", label: "Терминал" },
@@ -150,7 +200,7 @@ export function AdminPage() {
       <main className="content">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
         <div className="admin-nav">
-          {tabs.map((t) => (
+          {navTabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -162,19 +212,23 @@ export function AdminPage() {
           ))}
         </div>
 
-        {tab === "services" && (
+        {activeCatalogTab && (
           <div className="panel stack">
-            <h2 className="h2">Услуги</h2>
+            <h2 className="h2">{activeCatalogTab.name}</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Позиции вкладки на кассе. Добавляйте услуги мойки или товары (кофе, чай и т.п.).
+            </p>
             <table className="table">
               <thead>
                 <tr>
                   <th>Название</th>
                   <th>Цена</th>
                   <th>Активна</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {services.map((s) => (
+                {itemsForActiveTab.map((s) => (
                   <tr key={s.id}>
                     <td>{s.name}</td>
                     <td>{formatRub(s.priceKopecks)}</td>
@@ -191,6 +245,7 @@ export function AdminPage() {
                                 priceKopecks: s.priceKopecks,
                                 active: !s.active,
                                 sortOrder: s.sortOrder,
+                                tabId: s.tabId,
                               },
                               s.id
                             )
@@ -200,10 +255,26 @@ export function AdminPage() {
                         {s.active ? "Выкл" : "Вкл"}
                       </button>
                     </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        onClick={() =>
+                          void removeWithConfirm(`Удалить «${s.name}»?`, () =>
+                            adminApi.deleteService(token, s.id)
+                          )
+                        }
+                      >
+                        Удалить
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {itemsForActiveTab.length === 0 && (
+              <p className="muted">Пока пусто — добавьте первую позицию ниже.</p>
+            )}
             <div className="row">
               <input
                 placeholder="Название"
@@ -225,6 +296,7 @@ export function AdminPage() {
                       priceKopecks: Math.round(Number(svcForm.priceRub) * 100),
                       active: true,
                       sortOrder: Number(svcForm.sortOrder) || 0,
+                      tabId: activeCatalogTab.id,
                     })
                     .then(() => {
                       setSvcForm({ name: "", priceRub: "", sortOrder: "0" });
@@ -233,6 +305,102 @@ export function AdminPage() {
                 }
               >
                 Добавить
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "catalog-tabs" && (
+          <div className="panel stack">
+            <h2 className="h2">Вкладки кассы</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Управляют переключателями «Услуги / Товары» на кассе. Можно добавить новую вкладку
+              (например, «Химия»).
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Slug</th>
+                  <th>Порядок</th>
+                  <th>Активна</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {catalogTabs.map((ct) => (
+                  <tr key={ct.id}>
+                    <td>{ct.name}</td>
+                    <td className="muted">{ct.slug}</td>
+                    <td>{ct.sortOrder}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() =>
+                          void adminApi
+                            .saveCatalogTab(
+                              token,
+                              {
+                                name: ct.name,
+                                sortOrder: ct.sortOrder,
+                                active: !ct.active,
+                              },
+                              ct.id
+                            )
+                            .then(refresh)
+                        }
+                      >
+                        {ct.active ? "Выкл" : "Вкл"}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        onClick={() =>
+                          void removeWithConfirm(
+                            `Удалить вкладку «${ct.name}»? Сначала должны быть удалены все позиции.`,
+                            () => adminApi.deleteCatalogTab(token, ct.id)
+                          )
+                        }
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="row">
+              <input
+                placeholder="Название вкладки"
+                value={tabForm.name}
+                onChange={(e) => setTabForm({ ...tabForm, name: e.target.value })}
+              />
+              <input
+                placeholder="Порядок"
+                value={tabForm.sortOrder}
+                onChange={(e) => setTabForm({ ...tabForm, sortOrder: e.target.value })}
+                style={{ maxWidth: "6rem" }}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() =>
+                  void adminApi
+                    .saveCatalogTab(token, {
+                      name: tabForm.name,
+                      sortOrder: Number(tabForm.sortOrder) || 10,
+                      active: true,
+                    })
+                    .then(() => {
+                      setTabForm({ name: "", sortOrder: "10" });
+                      return refresh();
+                    })
+                }
+              >
+                Добавить вкладку
               </button>
             </div>
           </div>
@@ -257,21 +425,34 @@ export function AdminPage() {
                     <td>{d.type}</td>
                     <td>{d.type === "percent" ? `${d.value}%` : formatRub(d.value)}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() =>
-                          void adminApi
-                            .saveDiscount(
-                              token,
-                              { name: d.name, type: d.type, value: d.value, active: !d.active },
-                              d.id
+                      <div className="row" style={{ gap: "0.35rem", flexWrap: "nowrap" }}>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveDiscount(
+                                token,
+                                { name: d.name, type: d.type, value: d.value, active: !d.active },
+                                d.id
+                              )
+                              .then(refresh)
+                          }
+                        >
+                          {d.active ? "Выкл" : "Вкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(`Удалить скидку «${d.name}»?`, () =>
+                              adminApi.deleteDiscount(token, d.id)
                             )
-                            .then(refresh)
-                        }
-                      >
-                        {d.active ? "Выкл" : "Вкл"}
-                      </button>
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -328,6 +509,7 @@ export function AdminPage() {
                 <tr>
                   <th>Имя</th>
                   <th>Статус</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -345,6 +527,19 @@ export function AdminPage() {
                         }
                       >
                         {w.active ? "Активен" : "Выкл"}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        onClick={() =>
+                          void removeWithConfirm(`Удалить мойщика «${w.name}»?`, () =>
+                            adminApi.deleteWasher(token, w.id)
+                          )
+                        }
+                      >
+                        Удалить
                       </button>
                     </td>
                   </tr>

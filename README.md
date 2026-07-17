@@ -36,6 +36,7 @@ pnpm dev
 - Админ: каталог, мойщики, терминал, аналитика, sync
 - Облако: outbox sync → отчёты владельцу
 - Адаптеры терминала/СБП: эмулятор + HTTP + sdk_bridge (`pnpm dev:bridge`)
+- Камера ANPR на въезде — в [бэклоге](doc/features/01-entry-camera-anpr.md) до покупки камеры
 
 ## Стек
 

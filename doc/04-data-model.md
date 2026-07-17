@@ -17,12 +17,22 @@
 - `active` INTEGER
 - `created_at` TEXT
 
+### catalog_tabs
+Вкладки кассы (Услуги, Товары, …). Админ может добавлять новые.
+- `id` TEXT PK
+- `slug` TEXT UNIQUE (`services`, `products`, …)
+- `name` TEXT
+- `sort_order` INTEGER
+- `active` INTEGER
+
 ### services
+Позиции каталога (и услуги мойки, и товары) — привязаны к вкладке.
 - `id` TEXT PK
 - `name` TEXT
 - `price_kopecks` INTEGER
 - `active` INTEGER
 - `sort_order` INTEGER
+- `tab_id` TEXT → `catalog_tabs.id`
 
 ### discounts
 - `id` TEXT PK

@@ -4,7 +4,7 @@
 
 | Файл | Фича | Статус |
 |------|------|--------|
-| [01-entry-camera-anpr.md](01-entry-camera-anpr.md) | Камера на въезде + распознавание госномера → клиент на кассе | in progress |
+| [01-entry-camera-anpr.md](01-entry-camera-anpr.md) | Камера на въезде + распознавание госномера → клиент на кассе | backlog (ждём камеру) |
 | [02-windows-exe-packaging.md](02-windows-exe-packaging.md) | Сборка в .exe для Windows мини-ПК (Electron/Tauri) | planned |
 | [03-backlog-ideas.md](03-backlog-ideas.md) | Бэклог идей: мойка / админ / касса (+ кофе, акции, подсказки) | backlog |
 

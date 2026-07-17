@@ -7,7 +7,6 @@ import {
   setWasherToken,
   type OrderDto,
 } from "../api";
-import { ClientSidePanel } from "../components/ClientSidePanel";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
@@ -33,6 +32,7 @@ export function PosPage() {
     message?: string;
   } | null>(null);
   const [recentKey, setRecentKey] = useState(0);
+  const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
 
   useEffect(() => {
     const tick = () => {
@@ -48,8 +48,21 @@ export function PosPage() {
 
   useEffect(() => {
     if (!token) return;
-    api.catalog().then(setCatalog).catch((e) => setError(e.message));
+    api
+      .catalog()
+      .then((c) => {
+        setCatalog(c);
+        setCatalogTabId((prev) => prev ?? c.tabs[0]?.id ?? null);
+      })
+      .catch((e) => setError(e.message));
   }, [token]);
+
+  const catalogItems = useMemo(() => {
+    if (!catalog) return [];
+    const tabId = catalogTabId ?? catalog.tabs[0]?.id;
+    if (!tabId) return catalog.services;
+    return catalog.services.filter((s) => s.tabId === tabId);
+  }, [catalog, catalogTabId]);
 
   useEffect(() => {
     if (!token) return;
@@ -260,9 +273,24 @@ export function PosPage() {
 
           <div className="pos-layout">
             <section className="panel">
-              <h2 className="h2">Услуги</h2>
+              <div className="catalog-tabs" role="tablist">
+                {(catalog?.tabs ?? []).map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={(catalogTabId ?? catalog?.tabs[0]?.id) === t.id}
+                    className={
+                      (catalogTabId ?? catalog?.tabs[0]?.id) === t.id ? "active" : ""
+                    }
+                    onClick={() => setCatalogTabId(t.id)}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
               <div className="grid-touch">
-                {catalog?.services.map((s) => (
+                {catalogItems.map((s) => (
                   <button
                     key={s.id}
                     type="button"
@@ -273,6 +301,11 @@ export function PosPage() {
                     <strong>{formatRub(s.priceKopecks)}</strong>
                   </button>
                 ))}
+                {catalogItems.length === 0 && (
+                  <p className="muted" style={{ margin: 0 }}>
+                    В этой вкладке пока нет позиций
+                  </p>
+                )}
               </div>
             </section>
 
@@ -323,16 +356,6 @@ export function PosPage() {
               </button>
             </section>
           </div>
-
-          {token && (
-            <ClientSidePanel
-              token={token}
-              orderId={order?.id ?? null}
-              attachedClientId={order?.clientId ?? null}
-              onAttached={(o) => setOrder(o)}
-              onError={setError}
-            />
-          )}
         </div>
       </main>
 

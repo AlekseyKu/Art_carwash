@@ -258,6 +258,29 @@ button:disabled {
   color: #fff;
 }
 
+.catalog-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.catalog-tabs button {
+  flex: 1;
+  min-width: 7rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  background: #fff;
+  border: 2px solid var(--brand-silver-soft);
+  padding: 0.7rem 1rem;
+}
+
+.catalog-tabs button.active {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;
@@ -350,7 +373,7 @@ button:disabled {
 
 @media (min-width: 1200px) {
   .pos-with-sides {
-    grid-template-columns: 260px minmax(0, 1fr) 300px;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 }
 

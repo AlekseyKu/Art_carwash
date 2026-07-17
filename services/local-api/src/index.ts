@@ -19,7 +19,15 @@ import {
   loginAdmin,
   loginWasher,
 } from "./auth.js";
-import { db, getSetting, migrate, seedIfEmpty, setSetting } from "./db.js";
+import {
+  db,
+  getCatalogTabBySlug,
+  getSetting,
+  migrate,
+  seedIfEmpty,
+  setSetting,
+  TAB_SLUG_SERVICES,
+} from "./db.js";
 import {
   analytics,
   cancelOrder,
@@ -105,7 +113,62 @@ app.get("/api/posts", async () => {
   return db.prepare("SELECT id, name FROM posts ORDER BY id").all();
 });
 
+function mapServiceRow(s: {
+  id: string;
+  name: string;
+  price_kopecks: number;
+  active: number;
+  sort_order: number;
+  tab_id: string | null;
+}) {
+  return {
+    id: s.id,
+    name: s.name,
+    priceKopecks: s.price_kopecks,
+    active: !!s.active,
+    sortOrder: s.sort_order,
+    tabId: s.tab_id ?? "",
+  };
+}
+
+function mapTabRow(t: {
+  id: string;
+  slug: string;
+  name: string;
+  sort_order: number;
+  active: number;
+}) {
+  return {
+    id: t.id,
+    slug: t.slug,
+    name: t.name,
+    sortOrder: t.sort_order,
+    active: !!t.active,
+  };
+}
+
+function slugifyTabName(name: string): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  return base || `tab-${nanoid(6)}`;
+}
+
 app.get("/api/catalog", async () => {
+  const tabs = db
+    .prepare(
+      "SELECT * FROM catalog_tabs WHERE active = 1 ORDER BY sort_order, name"
+    )
+    .all() as {
+    id: string;
+    slug: string;
+    name: string;
+    sort_order: number;
+    active: number;
+  }[];
   const services = db
     .prepare("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, name")
     .all() as {
@@ -114,6 +177,7 @@ app.get("/api/catalog", async () => {
     price_kopecks: number;
     active: number;
     sort_order: number;
+    tab_id: string | null;
   }[];
   const discounts = db
     .prepare("SELECT * FROM discounts WHERE active = 1")
@@ -125,13 +189,8 @@ app.get("/api/catalog", async () => {
     active: number;
   }[];
   return {
-    services: services.map((s) => ({
-      id: s.id,
-      name: s.name,
-      priceKopecks: s.price_kopecks,
-      active: !!s.active,
-      sortOrder: s.sort_order,
-    })),
+    tabs: tabs.map(mapTabRow),
+    services: services.map(mapServiceRow),
     discounts: discounts.map((d) => ({
       id: d.id,
       name: d.name,
@@ -282,6 +341,65 @@ app.post<{ Params: { id: string } }>("/api/orders/:id/cancel", async (req) => {
   return cancelOrder(req.params.id);
 });
 
+app.get("/api/admin/catalog-tabs", async (req) => {
+  requireAdmin(req);
+  const rows = db
+    .prepare("SELECT * FROM catalog_tabs ORDER BY sort_order, name")
+    .all() as {
+    id: string;
+    slug: string;
+    name: string;
+    sort_order: number;
+    active: number;
+  }[];
+  return rows.map(mapTabRow);
+});
+
+app.post<{
+  Body: { name: string; slug?: string; sortOrder?: number; active?: boolean };
+}>("/api/admin/catalog-tabs", async (req) => {
+  requireAdmin(req);
+  const name = req.body.name?.trim();
+  if (!name) throw new Error("Название вкладки обязательно");
+  let slug = (req.body.slug?.trim() || slugifyTabName(name)).toLowerCase();
+  const taken = getCatalogTabBySlug(slug);
+  if (taken) slug = `${slug}-${nanoid(4)}`;
+  const id = nanoid();
+  db.prepare(
+    "INSERT INTO catalog_tabs (id, slug, name, sort_order, active) VALUES (?, ?, ?, ?, ?)"
+  ).run(id, slug, name, req.body.sortOrder ?? 100, req.body.active === false ? 0 : 1);
+  return { id, slug };
+});
+
+app.put<{
+  Params: { id: string };
+  Body: { name: string; sortOrder: number; active: boolean };
+}>("/api/admin/catalog-tabs/:id", async (req) => {
+  requireAdmin(req);
+  db.prepare(
+    "UPDATE catalog_tabs SET name = ?, sort_order = ?, active = ? WHERE id = ?"
+  ).run(req.body.name, req.body.sortOrder, req.body.active ? 1 : 0, req.params.id);
+  return { ok: true };
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/catalog-tabs/:id", async (req) => {
+  requireAdmin(req);
+  const tab = db
+    .prepare("SELECT id, slug FROM catalog_tabs WHERE id = ?")
+    .get(req.params.id) as { id: string; slug: string } | undefined;
+  if (!tab) throw new Error("Вкладка не найдена");
+  const items = db
+    .prepare("SELECT COUNT(*) as c FROM services WHERE tab_id = ?")
+    .get(tab.id) as { c: number };
+  if (items.c > 0) {
+    throw new Error("Сначала удалите все позиции во вкладке");
+  }
+  const totalTabs = db.prepare("SELECT COUNT(*) as c FROM catalog_tabs").get() as { c: number };
+  if (totalTabs.c <= 1) throw new Error("Нельзя удалить последнюю вкладку");
+  db.prepare("DELETE FROM catalog_tabs WHERE id = ?").run(tab.id);
+  return { ok: true };
+});
+
 app.get("/api/admin/services", async (req) => {
   requireAdmin(req);
   const rows = db.prepare("SELECT * FROM services ORDER BY sort_order, name").all() as {
@@ -290,45 +408,65 @@ app.get("/api/admin/services", async (req) => {
     price_kopecks: number;
     active: number;
     sort_order: number;
+    tab_id: string | null;
   }[];
-  return rows.map((s) => ({
-    id: s.id,
-    name: s.name,
-    priceKopecks: s.price_kopecks,
-    active: !!s.active,
-    sortOrder: s.sort_order,
-  }));
+  return rows.map(mapServiceRow);
 });
 
 app.post<{
-  Body: { name: string; priceKopecks: number; active?: boolean; sortOrder?: number };
+  Body: {
+    name: string;
+    priceKopecks: number;
+    active?: boolean;
+    sortOrder?: number;
+    tabId?: string;
+  };
 }>("/api/admin/services", async (req) => {
   requireAdmin(req);
   const id = nanoid();
+  const tabId =
+    req.body.tabId || getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id || "";
+  if (!tabId) throw new Error("Не найдена вкладка каталога");
   db.prepare(
-    "INSERT INTO services (id, name, price_kopecks, active, sort_order) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO services (id, name, price_kopecks, active, sort_order, tab_id) VALUES (?, ?, ?, ?, ?, ?)"
   ).run(
     id,
     req.body.name,
     req.body.priceKopecks,
     req.body.active === false ? 0 : 1,
-    req.body.sortOrder ?? 0
+    req.body.sortOrder ?? 0,
+    tabId
   );
   return { id };
 });
 
 app.put<{
   Params: { id: string };
-  Body: { name: string; priceKopecks: number; active: boolean; sortOrder: number };
+  Body: {
+    name: string;
+    priceKopecks: number;
+    active: boolean;
+    sortOrder: number;
+    tabId?: string;
+  };
 }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
+  const existing = db
+    .prepare("SELECT tab_id FROM services WHERE id = ?")
+    .get(req.params.id) as { tab_id: string | null } | undefined;
+  const tabId =
+    req.body.tabId ||
+    existing?.tab_id ||
+    getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id ||
+    "";
   db.prepare(
-    "UPDATE services SET name = ?, price_kopecks = ?, active = ?, sort_order = ? WHERE id = ?"
+    "UPDATE services SET name = ?, price_kopecks = ?, active = ?, sort_order = ?, tab_id = ? WHERE id = ?"
   ).run(
     req.body.name,
     req.body.priceKopecks,
     req.body.active ? 1 : 0,
     req.body.sortOrder,
+    tabId,
     req.params.id
   );
   return { ok: true };
@@ -336,7 +474,8 @@ app.put<{
 
 app.delete<{ Params: { id: string } }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
-  db.prepare("UPDATE services SET active = 0 WHERE id = ?").run(req.params.id);
+  const result = db.prepare("DELETE FROM services WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) throw new Error("Позиция не найдена");
   return { ok: true };
 });
 
@@ -381,6 +520,15 @@ app.put<{
     req.body.active ? 1 : 0,
     req.params.id
   );
+  return { ok: true };
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/discounts/:id", async (req) => {
+  requireAdmin(req);
+  // Снимаем ссылку у черновиков/заказов, чтобы не ломать историю
+  db.prepare("UPDATE orders SET discount_id = NULL WHERE discount_id = ?").run(req.params.id);
+  const result = db.prepare("DELETE FROM discounts WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) throw new Error("Скидка не найдена");
   return { ok: true };
 });
 
@@ -439,6 +587,16 @@ app.put<{
       req.params.id
     );
   }
+  return { ok: true };
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/washers/:id", async (req) => {
+  requireAdmin(req);
+  const count = db.prepare("SELECT COUNT(*) as c FROM washers").get() as { c: number };
+  if (count.c <= 1) throw new Error("Нельзя удалить последнего мойщика");
+  db.prepare("DELETE FROM sessions WHERE washer_id = ?").run(req.params.id);
+  const result = db.prepare("DELETE FROM washers WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) throw new Error("Мойщик не найден");
   return { ok: true };
 });
 
