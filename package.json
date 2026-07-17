@@ -1,0 +1,15 @@
+{
+  "name": "art-carwash",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel --filter @art/local-api --filter @art/web --filter @art/cloud-api dev",
+    "dev:local": "pnpm --parallel --filter @art/local-api --filter @art/web dev",
+    "dev:cloud": "pnpm --filter @art/cloud-api dev",
+    "dev:bridge": "pnpm --filter @art/terminal-bridge start",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,462 @@
+:root {
+  --brand-primary: #6a5acd;
+  --brand-primary-hover: #5a4bb8;
+  --brand-silver: #a9a9a9;
+  --brand-silver-soft: #d8dadf;
+  --ink: #1e1f24;
+  --muted: #6b6f78;
+  --surface: #f3f4f7;
+  --surface-elevated: #ffffff;
+  --success: #2f9e6b;
+  --danger: #c43c3c;
+  --warning: #c48a1a;
+  --font: "Montserrat", system-ui, sans-serif;
+  --radius: 16px;
+  --touch: 56px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 80% 50% at 10% -10%, rgba(106, 90, 205, 0.18), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(169, 169, 169, 0.25), transparent),
+    var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 14px;
+  min-height: var(--touch);
+  padding: 0.75rem 1.25rem;
+  font-weight: 600;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--brand-primary);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--brand-primary-hover);
+}
+
+.btn-secondary {
+  background: var(--surface-elevated);
+  color: var(--ink);
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-success {
+  background: var(--success);
+  color: #fff;
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.app-shell {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem 1.25rem;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.brand {
+  font-weight: 800;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--brand-primary);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.status-pill.offline {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, white);
+}
+
+.status-pill.online {
+  color: var(--success);
+}
+
+.panel {
+  background: var(--surface-elevated);
+  border: 1px solid var(--brand-silver-soft);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+.grid-touch {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.h1 {
+  font-size: clamp(1.75rem, 4vw, 2.5rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.5rem;
+}
+
+.h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.65rem;
+  max-width: 320px;
+  margin: 0 auto;
+}
+
+.pin-pad button {
+  font-size: 1.5rem;
+  min-height: 64px;
+  background: #fff;
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+}
+
+.pin-dots span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--brand-primary);
+}
+
+.pin-dots span.filled {
+  background: var(--brand-primary);
+}
+
+.service-chip {
+  text-align: left;
+  background: #fff;
+  border: 2px solid var(--brand-silver-soft);
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.service-chip.selected {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+.post-btn {
+  flex: 1;
+  font-size: 1.1rem;
+  background: #fff;
+  border: 2px solid var(--brand-silver-soft);
+}
+
+.post-btn.active {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+.total-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: #1e1f24;
+  color: #fff;
+}
+
+.total-bar .sum {
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+
+.admin-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.admin-nav button.active {
+  background: var(--brand-primary);
+  color: #fff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.75rem 0.5rem;
+  border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.table th {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.field input,
+.field select {
+  min-height: 48px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+}
+
+.loyalty-stub {
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px dashed var(--brand-silver);
+  color: var(--muted);
+  font-size: 0.9rem;
+  background: color-mix(in srgb, var(--brand-silver-soft) 40%, white);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 31, 36, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal {
+  width: min(420px, 100%);
+  background: #fff;
+  border-radius: 20px;
+  padding: 1.5rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.content {
+  flex: 1;
+  padding: 1rem 1.25rem 6rem;
+  max-width: 1100px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.content-wide {
+  max-width: 1440px;
+}
+
+.pos-with-sides {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (min-width: 1200px) {
+  .pos-with-sides {
+    grid-template-columns: 260px minmax(0, 1fr) 300px;
+  }
+}
+
+@media (min-width: 900px) {
+  .pos-layout {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1rem;
+    align-items: start;
+  }
+}
+
+.client-panel,
+.recent-orders-panel {
+  position: sticky;
+  top: 0.75rem;
+}
+
+.recent-orders-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.recent-order-item {
+  padding: 0.65rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: color-mix(in srgb, var(--surface) 55%, white);
+}
+
+.recent-order-item.status-paid {
+  border-left: 3px solid var(--success);
+}
+
+.recent-order-item.status-cancelled {
+  border-left: 3px solid var(--danger);
+  opacity: 0.75;
+}
+
+.recent-order-item.status-awaiting_payment {
+  border-left: 3px solid var(--warning);
+}
+
+.recent-order-top {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.recent-order-sum {
+  margin-left: auto;
+  font-weight: 700;
+}
+
+.recent-order-meta {
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.recent-order-extra {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.recent-plate {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--brand-primary);
+}
+
+.anpr-badge {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem;
+  margin-bottom: 0.85rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+  border: 1px solid color-mix(in srgb, var(--brand-primary) 25%, white);
+}
+
+.anpr-plate,
+.client-plate {
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--brand-primary);
+}
+
+.client-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.client-card {
+  padding-top: 0.25rem;
+}
