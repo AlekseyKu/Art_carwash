@@ -157,24 +157,32 @@ export function AdminPage() {
           <Link to="/">Касса</Link>
         </header>
         <main className="content" style={{ display: "grid", placeItems: "center" }}>
-          <div className="panel" style={{ width: "min(420px, 100%)" }}>
+          <div className="panel" style={{ width: "min(420px, 100%)", textAlign: "center" }}>
             <h1 className="h1" style={{ fontSize: "1.5rem" }}>
               Админ
             </h1>
-            <p className="muted">Мастер-код</p>
-            <div className="field">
-              <input
-                type="password"
-                inputMode="numeric"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && void login()}
-              />
+            <p className="muted">Введите мастер-код</p>
+            <div className="pin-dots">
+              {Array.from({ length: Math.max(4, code.length || 4) }).map((_, i) => (
+                <span key={i} className={i < code.length ? "filled" : ""} />
+              ))}
             </div>
             {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-            <button type="button" className="btn-primary" style={{ width: "100%" }} onClick={() => void login()}>
-              Войти
-            </button>
+            <div className="pin-pad">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    if (k === "C") setCode("");
+                    else if (k === "OK") void login();
+                    else if (code.length < 8) setCode((c) => c + k);
+                  }}
+                >
+                  {k}
+                </button>
+              ))}
+            </div>
           </div>
         </main>
       </div>
