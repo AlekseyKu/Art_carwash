@@ -9,6 +9,7 @@ import {
   type CatalogItemDto,
   type CatalogTabDto,
 } from "../api";
+import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 
 type FixedTab =
   | "discounts"
@@ -216,6 +217,7 @@ export function AdminPage() {
   }, [token, tab]);
 
   return (
+    <TouchKeyboardProvider>
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">{BRAND_NAME} · Админ</div>
@@ -315,15 +317,19 @@ export function AdminPage() {
               <p className="muted">Пока пусто — добавьте первую позицию ниже.</p>
             )}
             <div className="row">
-              <input
+              <TouchField
                 placeholder="Название"
+                title="Название"
+                mode="text"
                 value={svcForm.name}
-                onChange={(e) => setSvcForm({ ...svcForm, name: e.target.value })}
+                onChange={(name) => setSvcForm((f) => ({ ...f, name }))}
               />
-              <input
+              <TouchField
                 placeholder="Цена ₽"
+                title="Цена ₽"
+                mode="numeric"
                 value={svcForm.priceRub}
-                onChange={(e) => setSvcForm({ ...svcForm, priceRub: e.target.value })}
+                onChange={(priceRub) => setSvcForm((f) => ({ ...f, priceRub }))}
               />
               <button
                 type="button"
@@ -412,15 +418,19 @@ export function AdminPage() {
               </tbody>
             </table>
             <div className="row">
-              <input
+              <TouchField
                 placeholder="Название вкладки"
+                title="Название вкладки"
+                mode="text"
                 value={tabForm.name}
-                onChange={(e) => setTabForm({ ...tabForm, name: e.target.value })}
+                onChange={(name) => setTabForm((f) => ({ ...f, name }))}
               />
-              <input
+              <TouchField
                 placeholder="Порядок"
+                title="Порядок"
+                mode="numeric"
                 value={tabForm.sortOrder}
-                onChange={(e) => setTabForm({ ...tabForm, sortOrder: e.target.value })}
+                onChange={(sortOrder) => setTabForm((f) => ({ ...f, sortOrder }))}
                 style={{ maxWidth: "6rem" }}
               />
               <button
@@ -498,10 +508,12 @@ export function AdminPage() {
               </tbody>
             </table>
             <div className="row">
-              <input
+              <TouchField
                 placeholder="Название"
+                title="Название скидки"
+                mode="text"
                 value={discForm.name}
-                onChange={(e) => setDiscForm({ ...discForm, name: e.target.value })}
+                onChange={(name) => setDiscForm((f) => ({ ...f, name }))}
               />
               <select
                 value={discForm.type}
@@ -510,10 +522,12 @@ export function AdminPage() {
                 <option value="percent">%</option>
                 <option value="fixed">₽</option>
               </select>
-              <input
+              <TouchField
                 placeholder="Значение"
+                title="Значение скидки"
+                mode="numeric"
                 value={discForm.value}
-                onChange={(e) => setDiscForm({ ...discForm, value: e.target.value })}
+                onChange={(value) => setDiscForm((f) => ({ ...f, value }))}
               />
               <button
                 type="button"
@@ -586,15 +600,21 @@ export function AdminPage() {
               </tbody>
             </table>
             <div className="row">
-              <input
+              <TouchField
                 placeholder="Имя"
+                title="Имя мойщика"
+                mode="text"
                 value={washerForm.name}
-                onChange={(e) => setWasherForm({ ...washerForm, name: e.target.value })}
+                onChange={(name) => setWasherForm((f) => ({ ...f, name }))}
               />
-              <input
+              <TouchField
                 placeholder="PIN 4–6"
+                title="PIN мойщика"
+                mode="pin"
+                maxLength={6}
+                secret
                 value={washerForm.pin}
-                onChange={(e) => setWasherForm({ ...washerForm, pin: e.target.value })}
+                onChange={(pin) => setWasherForm((f) => ({ ...f, pin }))}
               />
               <button
                 type="button"
@@ -634,30 +654,42 @@ export function AdminPage() {
             </div>
             <div className="field">
               <label>Host</label>
-              <input
+              <TouchField
+                title="Host"
+                mode="ascii"
+                placeholder="127.0.0.1"
                 value={terminal.host}
-                onChange={(e) => setTerminal({ ...terminal, host: e.target.value })}
+                onChange={(host) => setTerminal((t) => ({ ...t, host }))}
               />
             </div>
             <div className="field">
               <label>Port</label>
-              <input
+              <TouchField
+                title="Port"
+                mode="numeric"
+                placeholder="8080"
                 value={terminal.port}
-                onChange={(e) => setTerminal({ ...terminal, port: e.target.value })}
+                onChange={(port) => setTerminal((t) => ({ ...t, port }))}
               />
             </div>
             <div className="field">
               <label>COM-порт</label>
-              <input
+              <TouchField
+                title="COM-порт"
+                mode="ascii"
+                placeholder="COM3"
                 value={terminal.comPort}
-                onChange={(e) => setTerminal({ ...terminal, comPort: e.target.value })}
+                onChange={(comPort) => setTerminal((t) => ({ ...t, comPort }))}
               />
             </div>
             <div className="field">
               <label>Заметки</label>
-              <input
+              <TouchField
+                title="Заметки"
+                mode="text"
+                placeholder="Заметки"
                 value={terminal.notes}
-                onChange={(e) => setTerminal({ ...terminal, notes: e.target.value })}
+                onChange={(notes) => setTerminal((t) => ({ ...t, notes }))}
               />
             </div>
             <button
@@ -756,14 +788,14 @@ export function AdminPage() {
               </strong>
             </p>
             <div className="field">
-              <label htmlFor="gh-token">Personal Access Token (Contents: Read)</label>
-              <input
-                id="gh-token"
-                type="password"
-                autoComplete="off"
+              <label>Personal Access Token (Contents: Read)</label>
+              <TouchField
+                title="GitHub token"
+                mode="ascii"
+                secret
                 placeholder="ghp_… или github_pat_…"
                 value={githubTokenInput}
-                onChange={(e) => setGithubTokenInput(e.target.value)}
+                onChange={setGithubTokenInput}
               />
             </div>
             <div className="row">
@@ -895,18 +927,26 @@ export function AdminPage() {
             <h2 className="h2">Мастер-код</h2>
             <div className="field">
               <label>Текущий</label>
-              <input
-                type="password"
+              <TouchField
+                title="Текущий мастер-код"
+                mode="pin"
+                maxLength={8}
+                secret
+                placeholder="Текущий код"
                 value={masterForm.current}
-                onChange={(e) => setMasterForm({ ...masterForm, current: e.target.value })}
+                onChange={(current) => setMasterForm((f) => ({ ...f, current }))}
               />
             </div>
             <div className="field">
               <label>Новый</label>
-              <input
-                type="password"
+              <TouchField
+                title="Новый мастер-код"
+                mode="pin"
+                maxLength={8}
+                secret
+                placeholder="Новый код"
                 value={masterForm.next}
-                onChange={(e) => setMasterForm({ ...masterForm, next: e.target.value })}
+                onChange={(next) => setMasterForm((f) => ({ ...f, next }))}
               />
             </div>
             <button
@@ -932,7 +972,13 @@ export function AdminPage() {
             </h2>
             <div className="field">
               <label>URL cloud-api</label>
-              <input value={syncUrl} onChange={(e) => setSyncUrl(e.target.value)} />
+              <TouchField
+                title="URL cloud-api"
+                mode="ascii"
+                placeholder="http://127.0.0.1:3002"
+                value={syncUrl}
+                onChange={setSyncUrl}
+              />
             </div>
             <div className="row">
               <button
@@ -964,5 +1010,6 @@ export function AdminPage() {
         )}
       </main>
     </div>
+    </TouchKeyboardProvider>
   );
 }

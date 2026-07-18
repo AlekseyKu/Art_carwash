@@ -553,3 +553,118 @@ button:disabled {
 .client-card {
   padding-top: 0.25rem;
 }
+
+.touch-field {
+  min-height: 48px;
+  min-width: 8rem;
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.field .touch-field {
+  width: 100%;
+  flex: none;
+}
+
+.touch-field:empty::before,
+.touch-field.placeholder {
+  color: var(--muted);
+}
+
+.osk-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(30, 31, 36, 0.4);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: drawer-fade-in 0.16s ease-out;
+}
+
+.osk-panel {
+  width: min(920px, 100%);
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 0.85rem 0.85rem 1.25rem;
+  box-shadow: 0 -8px 28px rgba(30, 31, 36, 0.14);
+  animation: osk-slide-up 0.2s ease-out;
+}
+
+.osk-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.osk-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  min-height: 1.6em;
+  word-break: break-word;
+}
+
+.osk-keys {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.osk-row {
+  display: flex;
+  gap: 0.35rem;
+  justify-content: center;
+}
+
+.osk-keys-numeric {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.45rem;
+  max-width: 360px;
+  margin: 0 auto;
+}
+
+.osk-key {
+  flex: 1;
+  min-height: 52px;
+  min-width: 0;
+  padding: 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: color-mix(in srgb, var(--surface) 70%, white);
+  color: var(--brand-primary);
+  cursor: pointer;
+}
+
+.osk-key:active {
+  transform: scale(0.97);
+  background: color-mix(in srgb, var(--brand-primary) 12%, white);
+}
+
+.osk-key-wide {
+  flex: 2;
+}
+
+.osk-key-num {
+  min-height: 64px;
+  font-size: 1.45rem;
+}
+
+@keyframes osk-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}

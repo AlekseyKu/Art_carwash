@@ -9,7 +9,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.ART_DATA_DIR ?? path.join(__dirname, "../../../data");
 fs.mkdirSync(dataDir, { recursive: true });
 
-export const db = new DatabaseSync(path.join(dataDir, "local.db"));
+const dbPath = path.join(dataDir, "local.db");
+/** timeout помогает при hot-reload tsx: старый процесс ещё держит файл */
+export const db = new DatabaseSync(dbPath, { timeout: 10_000 });
+db.exec("PRAGMA busy_timeout = 10000");
 db.exec("PRAGMA journal_mode = WAL");
 db.exec("PRAGMA foreign_keys = ON");
 
