@@ -671,6 +671,45 @@ app.put<{ Body: { cloudSyncUrl: string; cloudSyncToken?: string } }>(
   }
 );
 
+async function desktopCtrl(pathname: string, method: "GET" | "POST" = "GET") {
+  const base = process.env.ART_DESKTOP_CTRL_URL?.trim();
+  const token = process.env.ART_DESKTOP_CTRL_TOKEN?.trim();
+  if (!base || !token) {
+    return {
+      ok: false,
+      desktop: false,
+      message:
+        "Обновление доступно только в приложении кассы (Electron). Запустите ArtCarwash-POS.",
+    };
+  }
+  const res = await fetch(`${base.replace(/\/$/, "")}${pathname}`, {
+    method,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) {
+    throw Object.assign(new Error(String(data.error ?? res.statusText)), {
+      statusCode: res.status,
+    });
+  }
+  return data;
+}
+
+app.get("/api/admin/updates/status", async (req) => {
+  requireAdmin(req);
+  return desktopCtrl("/status", "GET");
+});
+
+app.post("/api/admin/updates/check", async (req) => {
+  requireAdmin(req);
+  return desktopCtrl("/check", "POST");
+});
+
+app.post("/api/admin/updates/apply", async (req) => {
+  requireAdmin(req);
+  return desktopCtrl("/apply", "POST");
+});
+
 // Preview discount helper for UI
 app.post<{
   Body: { subtotalKopecks: number; discountId: string | null };

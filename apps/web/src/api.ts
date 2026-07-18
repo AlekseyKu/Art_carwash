@@ -297,6 +297,36 @@ export const adminApi = {
       body: JSON.stringify({ cloudSyncUrl, cloudSyncToken }),
       token,
     }),
+  updatesStatus: (token: string) =>
+    request<{
+      ok?: boolean;
+      desktop?: boolean;
+      updating?: boolean;
+      currentVersion?: string;
+      repo?: string;
+      message?: string;
+    }>("/api/admin/updates/status", { token }),
+  updatesCheck: (token: string) =>
+    request<{
+      ok?: boolean;
+      updateAvailable?: boolean;
+      currentVersion?: string;
+      latestVersion?: string | null;
+      message?: string;
+      releaseNotes?: string;
+      releaseUrl?: string | null;
+      desktop?: boolean;
+    }>("/api/admin/updates/check", { method: "POST", token, body: "{}" }),
+  updatesApply: (token: string) =>
+    request<{
+      ok?: boolean;
+      applied?: boolean;
+      restart?: boolean;
+      currentVersion?: string;
+      latestVersion?: string;
+      message?: string;
+      error?: string;
+    }>("/api/admin/updates/apply", { method: "POST", token, body: "{}" }),
 };
 
 export const ownerApi = {

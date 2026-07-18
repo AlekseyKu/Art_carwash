@@ -62,4 +62,20 @@ fs.writeFileSync(
 rimraf(webOut);
 copyDir(path.join(repoRoot, "apps", "web", "dist"), webOut);
 
-console.log("[prepare-resources] OK →", resources);
+const desktopPkg = JSON.parse(
+  fs.readFileSync(path.join(desktopRoot, "package.json"), "utf8")
+);
+fs.writeFileSync(
+  path.join(resources, "version.json"),
+  JSON.stringify(
+    {
+      version: desktopPkg.version,
+      builtAt: new Date().toISOString(),
+      channel: "github",
+    },
+    null,
+    2
+  )
+);
+
+console.log("[prepare-resources] OK →", resources, "v" + desktopPkg.version);

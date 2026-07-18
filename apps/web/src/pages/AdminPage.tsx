@@ -10,7 +10,14 @@ import {
   type CatalogTabDto,
 } from "../api";
 
-type FixedTab = "discounts" | "washers" | "terminal" | "analytics" | "security" | "catalog-tabs";
+type FixedTab =
+  | "discounts"
+  | "washers"
+  | "terminal"
+  | "analytics"
+  | "security"
+  | "updates"
+  | "catalog-tabs";
 type Tab = FixedTab | `catalog:${string}`;
 
 export function AdminPage() {
@@ -48,6 +55,17 @@ export function AdminPage() {
   const [masterForm, setMasterForm] = useState({ current: "", next: "" });
   const [syncUrl, setSyncUrl] = useState("http://127.0.0.1:3002");
   const [syncMsg, setSyncMsg] = useState("");
+  const [updateInfo, setUpdateInfo] = useState<{
+    desktop?: boolean;
+    currentVersion?: string;
+    latestVersion?: string | null;
+    updateAvailable?: boolean;
+    message?: string;
+    releaseNotes?: string;
+    releaseUrl?: string | null;
+    repo?: string;
+  } | null>(null);
+  const [updateBusy, setUpdateBusy] = useState(false);
 
   const activeCatalogTab = useMemo(() => {
     if (!tab.startsWith("catalog:")) return null;
@@ -173,8 +191,19 @@ export function AdminPage() {
     { id: "washers", label: "Мойщики" },
     { id: "terminal", label: "Терминал" },
     { id: "analytics", label: "Аналитика" },
+    { id: "updates", label: "Обновления" },
     { id: "security", label: "Безопасность" },
   ];
+
+  useEffect(() => {
+    if (!token || tab !== "updates") return;
+    setUpdateBusy(true);
+    adminApi
+      .updatesStatus(token)
+      .then((s) => setUpdateInfo(s))
+      .catch((e) => setError(e.message))
+      .finally(() => setUpdateBusy(false));
+  }, [token, tab]);
 
   return (
     <div className="app-shell">
@@ -695,6 +724,98 @@ export function AdminPage() {
                 </ul>
               </>
             )}
+          </div>
+        )}
+
+        {tab === "updates" && (
+          <div className="panel stack">
+            <h2 className="h2">Обновления кассы</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Проверка и установка с GitHub Releases (
+              {updateInfo?.repo ?? "AlekseyKu/Art_carwash"}). Работает в приложении
+              ArtCarwash-POS при наличии интернета. База данных не затрагивается.
+            </p>
+            <p>
+              Текущая версия:{" "}
+              <strong>{updateInfo?.currentVersion ?? updateInfo?.message ?? "—"}</strong>
+            </p>
+            {updateInfo?.latestVersion && (
+              <p>
+                На GitHub: <strong>{updateInfo.latestVersion}</strong>
+                {updateInfo.updateAvailable ? " · есть обновление" : " · актуально"}
+              </p>
+            )}
+            {updateInfo?.message && <p className="muted">{updateInfo.message}</p>}
+            {updateInfo?.releaseNotes && (
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: "0.85rem",
+                  background: "color-mix(in srgb, var(--brand-silver-soft) 40%, white)",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  maxHeight: "12rem",
+                  overflow: "auto",
+                }}
+              >
+                {updateInfo.releaseNotes}
+              </pre>
+            )}
+            <div className="row">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={updateBusy || !token}
+                onClick={() => {
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesCheck(token!)
+                    .then((r) => setUpdateInfo(r))
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Проверить обновления
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={updateBusy || !token || !updateInfo?.updateAvailable}
+                onClick={() => {
+                  if (!window.confirm("Скачать обновление с GitHub и перезапустить кассу?")) {
+                    return;
+                  }
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesApply(token!)
+                    .then((r) => {
+                      setUpdateInfo((prev) => ({ ...prev, ...r, updateAvailable: false }));
+                      if (r.restart) {
+                        setSyncMsg("Обновление установлено, приложение перезапускается…");
+                      }
+                    })
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Обновить
+              </button>
+              {updateInfo?.releaseUrl && (
+                <a
+                  className="btn-ghost"
+                  href={updateInfo.releaseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ textDecoration: "none", display: "grid", placeItems: "center" }}
+                >
+                  Открыть Release
+                </a>
+              )}
+            </div>
+            {updateBusy && <p className="muted">Подождите…</p>}
+            {syncMsg && <p className="muted">{syncMsg}</p>}
           </div>
         )}
 
