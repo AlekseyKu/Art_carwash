@@ -49,7 +49,11 @@ function httpGetJson(url, headers = {}) {
       res.on("end", () => {
         const body = Buffer.concat(chunks).toString("utf8");
         if ((res.statusCode || 500) >= 400) {
-          reject(new Error(`GitHub HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
+          const hint =
+            res.statusCode === 404
+              ? " (для приватного репозитория нужен GitHub token — Админ → Обновления)"
+              : "";
+          reject(new Error(`GitHub HTTP ${res.statusCode}${hint}: ${body.slice(0, 180)}`));
           return;
         }
         try {
@@ -70,12 +74,21 @@ function downloadFile(url, dest, headers = {}) {
     const req = lib.get(url, { headers: { "user-agent": "ArtCarwash-POS", ...headers } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         file.close();
-        fs.unlinkSync(dest);
+        try {
+          fs.unlinkSync(dest);
+        } catch {
+          /* ignore */
+        }
         downloadFile(res.headers.location, dest, headers).then(resolve, reject);
         return;
       }
       if ((res.statusCode || 500) >= 400) {
         file.close();
+        try {
+          fs.unlinkSync(dest);
+        } catch {
+          /* ignore */
+        }
         reject(new Error(`Download HTTP ${res.statusCode}`));
         return;
       }
@@ -123,7 +136,49 @@ function sha256File(file) {
   return hash.digest("hex");
 }
 
-function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
+function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }) {
+  function readConfig() {
+    return readJson(configPath, {}) || {};
+  }
+
+  function writeConfig(patch) {
+    const next = { ...readConfig(), ...patch };
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify(next, null, 2));
+    return next;
+  }
+
+  function getToken() {
+    const fromEnv = (process.env.ART_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "").trim();
+    if (fromEnv) return fromEnv;
+    const fromCfg = String(readConfig().githubToken || "").trim();
+    return fromCfg || "";
+  }
+
+  function setToken(token) {
+    const t = String(token || "").trim();
+    if (!t) {
+      const cfg = readConfig();
+      delete cfg.githubToken;
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(cfg, null, 2));
+      return { ok: true, hasGithubToken: false };
+    }
+    writeConfig({ githubToken: t });
+    return { ok: true, hasGithubToken: true };
+  }
+
+  function githubHeaders(extra = {}) {
+    const headers = {
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      ...extra,
+    };
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return headers;
+  }
+
   function currentVersion() {
     const fromFile = readJson(currentVersionPath, null);
     if (fromFile?.version) return String(fromFile.version);
@@ -131,16 +186,46 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
   }
 
   async function checkLatest() {
-    const repo = DEFAULT_REPO;
-    const releases = await httpGetJson(
-      `https://api.github.com/repos/${repo}/releases?per_page=15`
-    );
+    const repo = process.env.ART_UPDATE_REPO || DEFAULT_REPO;
+    const token = getToken();
+    if (!token) {
+      return {
+        ok: false,
+        updateAvailable: false,
+        currentVersion: currentVersion(),
+        latestVersion: null,
+        hasGithubToken: false,
+        repo,
+        message:
+          "Репозиторий приватный: без GitHub token API отвечает 404. Создайте Personal Access Token (Contents: Read) и сохраните ниже.",
+      };
+    }
+    let releases;
+    try {
+      releases = await httpGetJson(
+        `https://api.github.com/repos/${repo}/releases?per_page=15`,
+        githubHeaders()
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return {
+        ok: false,
+        updateAvailable: false,
+        currentVersion: currentVersion(),
+        latestVersion: null,
+        hasGithubToken: true,
+        repo,
+        message: msg,
+      };
+    }
     if (!Array.isArray(releases) || releases.length === 0) {
       return {
         ok: true,
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: null,
+        hasGithubToken: true,
+        repo,
         message: "На GitHub пока нет Releases",
       };
     }
@@ -155,6 +240,8 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: null,
+        hasGithubToken: true,
+        repo,
         message: "Нет Release с файлом art-pos-update.zip",
       };
     }
@@ -166,12 +253,14 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
     const asset = (release.assets || []).find(
       (a) => a.name === ASSET_NAME || /^art-pos-update.*\.zip$/i.test(a.name)
     );
-    if (!asset?.browser_download_url) {
+    if (!asset?.url && !asset?.browser_download_url) {
       return {
         ok: true,
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: ver || null,
+        hasGithubToken: true,
+        repo,
         message: "В Release нет art-pos-update.zip",
         releaseUrl: release.html_url || null,
       };
@@ -188,9 +277,13 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
       releaseNotes: release.body || "",
       releaseUrl: release.html_url || null,
       assetName: asset.name,
-      assetUrl: asset.browser_download_url,
+      // для private repo нужен API asset URL + Accept: application/octet-stream
+      assetUrl: asset.url || asset.browser_download_url,
+      assetBrowserUrl: asset.browser_download_url || null,
       assetSize: asset.size,
       publishedAt: release.published_at || null,
+      hasGithubToken: true,
+      repo,
       message: updateAvailable
         ? `Доступна версия ${latest}`
         : `Уже последняя версия (${current})`,
@@ -200,7 +293,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
   async function applyUpdate() {
     const info = await checkLatest();
     if (!info.updateAvailable) {
-      return { ok: true, applied: false, ...info };
+      return { ok: Boolean(info.ok), applied: false, ...info };
     }
     fs.mkdirSync(tempDir, { recursive: true });
     const zipPath = path.join(tempDir, ASSET_NAME);
@@ -209,11 +302,11 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
     rimraf(extractDir);
 
     await downloadFile(info.assetUrl, zipPath, {
+      ...githubHeaders(),
       Accept: "application/octet-stream",
     });
     extractZip(zipPath, extractDir);
 
-    // zip может содержать корень art-pos-update/ или сразу web+api
     let root = extractDir;
     const directWeb = path.join(extractDir, "web", "index.html");
     if (!fs.existsSync(directWeb)) {
@@ -230,8 +323,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
     if (!fs.existsSync(path.join(webSrc, "index.html"))) {
       throw new Error("В архиве нет web/index.html");
     }
-    if (!fs.existsSync(path.join(apiSrc, "dist", "index.js")) && !fs.existsSync(path.join(apiSrc, "dist"))) {
-      // allow api/dist/index.js
+    if (
+      !fs.existsSync(path.join(apiSrc, "dist", "index.js")) &&
+      !fs.existsSync(path.join(apiSrc, "dist"))
+    ) {
       if (!fs.existsSync(path.join(apiSrc, "index.js"))) {
         throw new Error("В архиве нет api/dist");
       }
@@ -283,10 +378,18 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir }) {
       latestVersion: info.latestVersion,
       message: `Обновлено до ${info.latestVersion}. Перезапуск…`,
       restart: true,
+      hasGithubToken: true,
     };
   }
 
-  return { currentVersion, checkLatest, applyUpdate };
+  return {
+    currentVersion,
+    checkLatest,
+    applyUpdate,
+    getToken,
+    setToken,
+    hasToken: () => Boolean(getToken()),
+  };
 }
 
 module.exports = { createUpdater, cmpSemver, ASSET_NAME, DEFAULT_REPO };

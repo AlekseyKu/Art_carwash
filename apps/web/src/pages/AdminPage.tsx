@@ -64,8 +64,10 @@ export function AdminPage() {
     releaseNotes?: string;
     releaseUrl?: string | null;
     repo?: string;
+    hasGithubToken?: boolean;
   } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [githubTokenInput, setGithubTokenInput] = useState("");
 
   const activeCatalogTab = useMemo(() => {
     if (!tab.startsWith("catalog:")) return null;
@@ -747,6 +749,67 @@ export function AdminPage() {
               Текущая версия:{" "}
               <strong>{updateInfo?.currentVersion ?? updateInfo?.message ?? "—"}</strong>
             </p>
+            <p className="muted" style={{ margin: 0 }}>
+              GitHub token:{" "}
+              <strong>
+                {updateInfo?.hasGithubToken ? "сохранён на кассе" : "не задан"}
+              </strong>
+            </p>
+            <div className="field">
+              <label htmlFor="gh-token">Personal Access Token (Contents: Read)</label>
+              <input
+                id="gh-token"
+                type="password"
+                autoComplete="off"
+                placeholder="ghp_… или github_pat_…"
+                value={githubTokenInput}
+                onChange={(e) => setGithubTokenInput(e.target.value)}
+              />
+            </div>
+            <div className="row">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={updateBusy || !token || !githubTokenInput.trim()}
+                onClick={() => {
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesSetGithubToken(token!, githubTokenInput.trim())
+                    .then((r) => {
+                      setSyncMsg(r.message ?? "Token сохранён");
+                      setGithubTokenInput("");
+                      return adminApi.updatesStatus(token!);
+                    })
+                    .then((s) => setUpdateInfo((prev) => ({ ...prev, ...s })))
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Сохранить token
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                disabled={updateBusy || !token || !updateInfo?.hasGithubToken}
+                onClick={() => {
+                  if (!window.confirm("Удалить сохранённый GitHub token с этой кассы?")) return;
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesSetGithubToken(token!, "")
+                    .then((r) => {
+                      setSyncMsg(r.message ?? "Token удалён");
+                      return adminApi.updatesStatus(token!);
+                    })
+                    .then((s) => setUpdateInfo((prev) => ({ ...prev, ...s })))
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Удалить token
+              </button>
+            </div>
             {updateInfo?.latestVersion && (
               <p>
                 На GitHub: <strong>{updateInfo.latestVersion}</strong>

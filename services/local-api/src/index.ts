@@ -671,7 +671,11 @@ app.put<{ Body: { cloudSyncUrl: string; cloudSyncToken?: string } }>(
   }
 );
 
-async function desktopCtrl(pathname: string, method: "GET" | "POST" = "GET") {
+async function desktopCtrl(
+  pathname: string,
+  method: "GET" | "POST" = "GET",
+  body?: unknown
+) {
   const base = process.env.ART_DESKTOP_CTRL_URL?.trim();
   const token = process.env.ART_DESKTOP_CTRL_TOKEN?.trim();
   if (!base || !token) {
@@ -682,9 +686,18 @@ async function desktopCtrl(pathname: string, method: "GET" | "POST" = "GET") {
         "Обновление доступно только в приложении кассы (Electron). Запустите ArtCarwash-POS.",
     };
   }
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${token}`,
+  };
+  let payload: string | undefined;
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+    payload = JSON.stringify(body);
+  }
   const res = await fetch(`${base.replace(/\/$/, "")}${pathname}`, {
     method,
-    headers: { authorization: `Bearer ${token}` },
+    headers,
+    body: payload,
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
@@ -708,6 +721,11 @@ app.post("/api/admin/updates/check", async (req) => {
 app.post("/api/admin/updates/apply", async (req) => {
   requireAdmin(req);
   return desktopCtrl("/apply", "POST");
+});
+
+app.post<{ Body: { token?: string } }>("/api/admin/updates/github-token", async (req) => {
+  requireAdmin(req);
+  return desktopCtrl("/github-token", "POST", { token: req.body?.token ?? "" });
 });
 
 // Preview discount helper for UI

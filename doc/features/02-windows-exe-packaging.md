@@ -65,9 +65,13 @@ pnpm release:pos
 - `art-pos-update.zip` — web + api (кнопка «Обновить» в админке)
 - `ArtCarwash-POS-X.Y.Z-portable.exe` — полная сборка
 
-2. На кассе: **Админ → Обновления → Проверить → Обновить** (нужен интернет).  
+2. На кассе (нужен интернет):  
+   - Репозиторий **приватный** → один раз сохраните GitHub Personal Access Token  
+     (fine-grained или classic, право **Contents: Read** на `AlekseyKu/Art_carwash`)  
+     в **Админ → Обновления**.  
+   - Затем **Проверить → Обновить**.  
    Приложение скачает zip, заменит `resources/web` и `resources/api`, перезапустится.  
-   SQLite в `%APPDATA%` не трогается.
+   SQLite в `%APPDATA%` не трогается. Token хранится в `%APPDATA%\\…\\update-config.json`.
 
 ## Код
 

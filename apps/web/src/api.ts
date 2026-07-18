@@ -305,6 +305,7 @@ export const adminApi = {
       currentVersion?: string;
       repo?: string;
       message?: string;
+      hasGithubToken?: boolean;
     }>("/api/admin/updates/status", { token }),
   updatesCheck: (token: string) =>
     request<{
@@ -316,6 +317,8 @@ export const adminApi = {
       releaseNotes?: string;
       releaseUrl?: string | null;
       desktop?: boolean;
+      hasGithubToken?: boolean;
+      repo?: string;
     }>("/api/admin/updates/check", { method: "POST", token, body: "{}" }),
   updatesApply: (token: string) =>
     request<{
@@ -327,6 +330,15 @@ export const adminApi = {
       message?: string;
       error?: string;
     }>("/api/admin/updates/apply", { method: "POST", token, body: "{}" }),
+  updatesSetGithubToken: (token: string, githubToken: string) =>
+    request<{ ok?: boolean; hasGithubToken?: boolean; message?: string }>(
+      "/api/admin/updates/github-token",
+      {
+        method: "POST",
+        token,
+        body: JSON.stringify({ token: githubToken }),
+      }
+    ),
 };
 
 export const ownerApi = {

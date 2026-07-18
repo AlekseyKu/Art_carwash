@@ -208,11 +208,16 @@ function startApi(nodeBin) {
   });
 }
 
+function updateConfigPath() {
+  return path.join(app.getPath("userData"), "update-config.json");
+}
+
 function getUpdater() {
   return createUpdater({
     resourcesDir: resourcesRoot(),
     currentVersionPath: versionPath(),
     tempDir: path.join(app.getPath("userData"), "updates"),
+    configPath: updateConfigPath(),
   });
 }
 
@@ -260,6 +265,25 @@ function startControlServer() {
           updating,
           currentVersion: updater.currentVersion(),
           repo: process.env.ART_UPDATE_REPO || "AlekseyKu/Art_carwash",
+          hasGithubToken: updater.hasToken(),
+        });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/github-token") {
+        const raw = await readBody(req);
+        let body = {};
+        try {
+          body = raw ? JSON.parse(raw) : {};
+        } catch {
+          send(400, { error: "Некорректный JSON" });
+          return;
+        }
+        const result = updater.setToken(body.token ?? "");
+        send(200, {
+          ...result,
+          message: result.hasGithubToken
+            ? "GitHub token сохранён на этой кассе"
+            : "GitHub token удалён",
         });
         return;
       }
@@ -300,7 +324,6 @@ function startControlServer() {
         }
         return;
       }
-      await readBody(req);
       send(404, { error: "Not found" });
     } catch (e) {
       send(500, { error: e instanceof Error ? e.message : String(e) });
