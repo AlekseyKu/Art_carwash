@@ -30,9 +30,11 @@ function formatTime(iso: string | null) {
 type Props = {
   token: string;
   refreshKey?: number;
+  /** Без своей рамки/заголовка — для drawer */
+  embedded?: boolean;
 };
 
-export function RecentOrdersPanel({ token, refreshKey = 0 }: Props) {
+export function RecentOrdersPanel({ token, refreshKey = 0, embedded = false }: Props) {
   const [orders, setOrders] = useState<RecentOrderDto[]>([]);
 
   const load = useCallback(() => {
@@ -48,9 +50,8 @@ export function RecentOrdersPanel({ token, refreshKey = 0 }: Props) {
     return () => clearInterval(id);
   }, [load, refreshKey]);
 
-  return (
-    <aside className="panel recent-orders-panel">
-      <h2 className="h2">Последние заказы</h2>
+  const body = (
+    <>
       {orders.length === 0 && (
         <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
           Пока нет завершённых заказов
@@ -61,7 +62,6 @@ export function RecentOrdersPanel({ token, refreshKey = 0 }: Props) {
           <li key={o.id} className={`recent-order-item status-${o.status}`}>
             <div className="recent-order-top">
               <strong>#{o.number}</strong>
-              <span className="muted">Пост {o.postId}</span>
               <span className="recent-order-sum">{formatRub(o.totalKopecks)}</span>
             </div>
             <div className="recent-order-meta muted">
@@ -80,6 +80,17 @@ export function RecentOrdersPanel({ token, refreshKey = 0 }: Props) {
           </li>
         ))}
       </ul>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="recent-orders-embedded">{body}</div>;
+  }
+
+  return (
+    <aside className="panel recent-orders-panel">
+      <h2 className="h2">Последние заказы</h2>
+      {body}
     </aside>
   );
 }

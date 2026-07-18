@@ -365,16 +365,28 @@ button:disabled {
   max-width: 1440px;
 }
 
-.pos-with-sides {
-  display: grid;
-  gap: 1rem;
-  align-items: start;
+.pos-toolbar {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.85rem;
 }
 
-@media (min-width: 1200px) {
-  .pos-with-sides {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border-radius: 14px;
+  border: 2px solid var(--brand-silver-soft);
+  background: #fff;
+  color: var(--brand-primary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.icon-btn:active {
+  transform: scale(0.96);
 }
 
 @media (min-width: 900px) {
@@ -390,6 +402,64 @@ button:disabled {
 .recent-orders-panel {
   position: sticky;
   top: 0.75rem;
+}
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(30, 31, 36, 0.4);
+  z-index: 40;
+  display: flex;
+  justify-content: flex-end;
+  animation: drawer-fade-in 0.18s ease-out;
+}
+
+.drawer-panel {
+  width: min(360px, 92vw);
+  height: 100%;
+  background: #fff;
+  box-shadow: -8px 0 28px rgba(30, 31, 36, 0.12);
+  padding: 1rem 1.1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  overflow: auto;
+}
+
+.drawer-panel-right {
+  animation: drawer-slide-in-right 0.22s ease-out;
+}
+
+.drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.recent-orders-embedded {
+  flex: 1;
+  min-height: 0;
+}
+
+@keyframes drawer-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes drawer-slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .recent-orders-list {

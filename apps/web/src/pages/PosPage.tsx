@@ -11,6 +11,9 @@ import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
 
+/** Черновик всегда на одном «посту» — выбор постов в UI убран. */
+const DRAFT_POST_ID = 1;
+
 export function PosPage() {
   const [token, setToken] = useState(getWasherToken());
   const [washerName, setWasherName] = useState("");
@@ -18,7 +21,6 @@ export function PosPage() {
   const [error, setError] = useState("");
   const [online, setOnline] = useState(true);
   const [pendingSync, setPendingSync] = useState(0);
-  const [postId, setPostId] = useState(1);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
@@ -32,6 +34,7 @@ export function PosPage() {
     message?: string;
   } | null>(null);
   const [recentKey, setRecentKey] = useState(0);
+  const [recentOpen, setRecentOpen] = useState(false);
   const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +70,7 @@ export function PosPage() {
   useEffect(() => {
     if (!token) return;
     api
-      .draft(postId, token)
+      .draft(DRAFT_POST_ID, token)
       .then((o) => {
         setOrder(o);
         const map: Record<string, number> = {};
@@ -76,7 +79,7 @@ export function PosPage() {
         setDiscountId(o.discountId);
       })
       .catch((e) => setError(e.message));
-  }, [token, postId]);
+  }, [token]);
 
   const subtotal = useMemo(() => {
     if (!catalog) return 0;
@@ -139,7 +142,7 @@ export function PosPage() {
       if (res.order?.status === "paid") {
         setPayOpen(false);
         setPendingPay(null);
-        const fresh = await api.draft(postId, token);
+        const fresh = await api.draft(DRAFT_POST_ID, token);
         setOrder(fresh);
         setQty({});
         setDiscountId(null);
@@ -173,7 +176,7 @@ export function PosPage() {
       if (action === "confirm" && res.order?.status === "paid") {
         setPayOpen(false);
         setPendingPay(null);
-        const fresh = await api.draft(postId, token);
+        const fresh = await api.draft(DRAFT_POST_ID, token);
         setOrder(fresh);
         setQty({});
         setDiscountId(null);
@@ -255,109 +258,151 @@ export function PosPage() {
       <main className="content content-wide">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
 
-        <div className="row" style={{ marginBottom: "1rem" }}>
-          {[1, 2].map((p) => (
-            <button
-              key={p}
-              type="button"
-              className={`post-btn ${postId === p ? "active" : ""}`}
-              onClick={() => setPostId(p)}
-            >
-              Пост {p}
-            </button>
-          ))}
+        <div className="pos-toolbar">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Последние заказы"
+            title="Последние заказы"
+            onClick={() => setRecentOpen(true)}
+          >
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 6h12M4 12h12M4 18h8"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+              <circle cx="18.5" cy="17.5" r="3.5" stroke="currentColor" strokeWidth="2" />
+              <path
+                d="M18.5 16v1.5l1 1"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
 
-        <div className="pos-with-sides">
-          {token && <RecentOrdersPanel token={token} refreshKey={recentKey} />}
+        <div className="pos-layout">
+          <section className="panel">
+            <div className="catalog-tabs" role="tablist">
+              {(catalog?.tabs ?? []).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={(catalogTabId ?? catalog?.tabs[0]?.id) === t.id}
+                  className={
+                    (catalogTabId ?? catalog?.tabs[0]?.id) === t.id ? "active" : ""
+                  }
+                  onClick={() => setCatalogTabId(t.id)}
+                >
+                  {t.name}
+                </button>
+              ))}
+            </div>
+            <div className="grid-touch">
+              {catalogItems.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className={`service-chip ${qty[s.id] ? "selected" : ""}`}
+                  onClick={() => toggleService(s.id)}
+                >
+                  <span>{s.name}</span>
+                  <strong>{formatRub(s.priceKopecks)}</strong>
+                </button>
+              ))}
+              {catalogItems.length === 0 && (
+                <p className="muted" style={{ margin: 0 }}>
+                  В этой вкладке пока нет позиций
+                </p>
+              )}
+            </div>
+          </section>
 
-          <div className="pos-layout">
-            <section className="panel">
-              <div className="catalog-tabs" role="tablist">
-                {(catalog?.tabs ?? []).map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={(catalogTabId ?? catalog?.tabs[0]?.id) === t.id}
-                    className={
-                      (catalogTabId ?? catalog?.tabs[0]?.id) === t.id ? "active" : ""
-                    }
-                    onClick={() => setCatalogTabId(t.id)}
-                  >
-                    {t.name}
-                  </button>
-                ))}
+          <section className="panel">
+            <h2 className="h2">Скидка</h2>
+            <select
+              value={discountId ?? ""}
+              onChange={(e) => {
+                const v = e.target.value || null;
+                setDiscountId(v);
+                void persist(qty, v);
+              }}
+            >
+              <option value="">Без скидки</option>
+              {catalog?.discounts.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+
+            <div style={{ marginTop: "1.25rem" }}>
+              <div className="muted">Подытог</div>
+              <div>{formatRub(order?.subtotalKopecks ?? subtotal)}</div>
+              <div className="muted" style={{ marginTop: "0.5rem" }}>
+                Скидка
               </div>
-              <div className="grid-touch">
-                {catalogItems.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    className={`service-chip ${qty[s.id] ? "selected" : ""}`}
-                    onClick={() => toggleService(s.id)}
-                  >
-                    <span>{s.name}</span>
-                    <strong>{formatRub(s.priceKopecks)}</strong>
-                  </button>
-                ))}
-                {catalogItems.length === 0 && (
-                  <p className="muted" style={{ margin: 0 }}>
-                    В этой вкладке пока нет позиций
-                  </p>
-                )}
+              <div>−{formatRub(order?.discountKopecks ?? 0)}</div>
+              <div className="muted" style={{ marginTop: "0.5rem" }}>
+                Итого
               </div>
-            </section>
-
-            <section className="panel">
-              <h2 className="h2">Скидка</h2>
-              <select
-                value={discountId ?? ""}
-                onChange={(e) => {
-                  const v = e.target.value || null;
-                  setDiscountId(v);
-                  void persist(qty, v);
-                }}
-              >
-                <option value="">Без скидки</option>
-                {catalog?.discounts.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-
-              <div style={{ marginTop: "1.25rem" }}>
-                <div className="muted">Подытог</div>
-                <div>{formatRub(order?.subtotalKopecks ?? subtotal)}</div>
-                <div className="muted" style={{ marginTop: "0.5rem" }}>
-                  Скидка
-                </div>
-                <div>−{formatRub(order?.discountKopecks ?? 0)}</div>
-                <div className="muted" style={{ marginTop: "0.5rem" }}>
-                  Итого
-                </div>
-                <div style={{ fontSize: "1.75rem", fontWeight: 800 }}>
-                  {formatRub(order?.totalKopecks ?? subtotal)}
-                </div>
+              <div style={{ fontSize: "1.75rem", fontWeight: 800 }}>
+                {formatRub(order?.totalKopecks ?? subtotal)}
               </div>
+            </div>
 
-              <button
-                type="button"
-                className="btn-primary"
-                style={{ width: "100%", marginTop: "1.25rem" }}
-                disabled={!order?.items?.length}
-                onClick={() => {
-                  setPendingPay(null);
-                  setPayOpen(true);
-                }}
-              >
-                Оплата
-              </button>
-            </section>
-          </div>
+            <button
+              type="button"
+              className="btn-primary"
+              style={{ width: "100%", marginTop: "1.25rem" }}
+              disabled={!order?.items?.length}
+              onClick={() => {
+                setPendingPay(null);
+                setPayOpen(true);
+              }}
+            >
+              Оплата
+            </button>
+          </section>
         </div>
       </main>
+
+      {recentOpen && token && (
+        <div className="drawer-backdrop" onClick={() => setRecentOpen(false)}>
+          <aside
+            className="drawer-panel drawer-panel-right"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Последние заказы"
+          >
+            <div className="drawer-header">
+              <h2 className="h2" style={{ margin: 0 }}>
+                Последние заказы
+              </h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть"
+                onClick={() => setRecentOpen(false)}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M6 6l12 12M18 6L6 18"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <RecentOrdersPanel token={token} refreshKey={recentKey} embedded />
+          </aside>
+        </div>
+      )}
 
       {payOpen && (
         <div className="modal-backdrop">
