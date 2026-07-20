@@ -512,6 +512,7 @@ export function PosPage() {
           <section className="panel">
             <h2 className="h2">Скидка</h2>
             <select
+              className="discount-select"
               value={discountId ?? ""}
               onChange={(e) => {
                 const v = e.target.value || null;

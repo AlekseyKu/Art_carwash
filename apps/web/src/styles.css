@@ -573,6 +573,47 @@ a.topbar-pill {
   }
 }
 
+/* Скидка: форма кнопки оплаты (radius), компактный белый select */
+.discount-select {
+  width: 100%;
+  min-height: 2.5rem;
+  height: 2.5rem;
+  padding: 0 2rem 0 0.9rem;
+  border: 1px solid var(--brand-silver-soft);
+  border-radius: 14px;
+  background-color: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%231e1f24' d='M1.4 0.6L6 5.2 10.6 0.6 12 2 6 8 0 2z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.85rem center;
+  background-size: 0.7rem;
+  transition: transform 0.12s ease, background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.discount-select:hover {
+  background-color: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
+  border-color: color-mix(in srgb, var(--ink) 18%, white);
+}
+
+.discount-select:active {
+  transform: scale(0.98);
+}
+
+.discount-select:focus {
+  outline: 2px solid color-mix(in srgb, var(--ink) 25%, white);
+  outline-offset: 2px;
+}
+
+.discount-select option {
+  background: #fff;
+  color: var(--ink);
+}
+
 .client-panel,
 .recent-orders-panel {
   position: sticky;
