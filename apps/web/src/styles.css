@@ -111,6 +111,38 @@ button:disabled {
   border-bottom: 1px solid var(--brand-silver-soft);
 }
 
+.window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.15rem;
+}
+
+.window-btn {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--brand-silver) 70%, transparent);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  padding: 0;
+}
+
+.window-btn:active {
+  transform: scale(0.96);
+}
+
+.window-btn-close {
+  color: var(--danger, #c0392b);
+}
+
+.window-btn-close:hover {
+  background: color-mix(in srgb, var(--danger, #c0392b) 12%, white);
+}
+
 .brand {
   font-weight: 800;
   font-size: 1.25rem;

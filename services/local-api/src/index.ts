@@ -106,11 +106,23 @@ app.get("/api/status", async () => {
   const pending = db.prepare("SELECT COUNT(*) as c FROM outbox WHERE synced_at IS NULL").get() as {
     c: number;
   };
+  const desktop = Boolean(
+    process.env.ART_DESKTOP_CTRL_URL?.trim() && process.env.ART_DESKTOP_CTRL_TOKEN?.trim()
+  );
   return {
     online,
     pendingSync: pending.c,
     siteName: getSetting("site_name") ?? "Автомойка АРТ",
+    desktop,
   };
+});
+
+app.post("/api/desktop/minimize", async () => {
+  return desktopCtrl("/window/minimize", "POST");
+});
+
+app.post("/api/desktop/close", async () => {
+  return desktopCtrl("/window/close", "POST");
 });
 
 app.post<{ Body: { pin: string } }>("/api/auth/washer", async (req) => {

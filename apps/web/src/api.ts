@@ -86,7 +86,20 @@ async function request<T>(
 }
 
 export const api = {
-  status: () => request<{ online: boolean; pendingSync: number; siteName: string }>("/api/status"),
+  status: () =>
+    request<{ online: boolean; pendingSync: number; siteName: string; desktop?: boolean }>(
+      "/api/status"
+    ),
+  desktopMinimize: () =>
+    request<{ ok?: boolean; error?: string }>("/api/desktop/minimize", {
+      method: "POST",
+      body: "{}",
+    }),
+  desktopClose: () =>
+    request<{ ok?: boolean; error?: string }>("/api/desktop/close", {
+      method: "POST",
+      body: "{}",
+    }),
   loginWasher: (pin: string) =>
     request<{ ok: boolean; token?: string; washer?: { id: string; name: string }; error?: string }>(
       "/api/auth/washer",

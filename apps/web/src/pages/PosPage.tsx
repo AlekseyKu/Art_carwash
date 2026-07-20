@@ -12,6 +12,7 @@ import {
 } from "../api";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 import { ShiftReportView } from "../components/ShiftReportView";
+import { WindowControls } from "../components/WindowControls";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
 
@@ -24,6 +25,7 @@ export function PosPage() {
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [online, setOnline] = useState(true);
+  const [desktopShell, setDesktopShell] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [order, setOrder] = useState<OrderDto | null>(null);
@@ -90,6 +92,7 @@ export function PosPage() {
         .then((s) => {
           setOnline(s.online);
           setPendingSync(s.pendingSync);
+          setDesktopShell(Boolean(s.desktop));
         })
         .catch(() => setOnline(false));
     };
@@ -322,9 +325,12 @@ export function PosPage() {
       <div className="app-shell">
         <header className="topbar">
           <div className="brand">{BRAND_NAME}</div>
-          <Link className="muted" to="/admin">
-            Админ
-          </Link>
+          <div className="row" style={{ alignItems: "center" }}>
+            <Link className="muted" to="/admin">
+              Админ
+            </Link>
+            <WindowControls visible={desktopShell} />
+          </div>
         </header>
         <main className="content" style={{ display: "grid", placeItems: "center" }}>
           <div className="panel" style={{ width: "min(420px, 100%)", textAlign: "center" }}>
@@ -395,6 +401,7 @@ export function PosPage() {
           <button type="button" className="btn-ghost" onClick={() => void logout()}>
             Смена PIN
           </button>
+          <WindowControls visible={desktopShell} />
         </div>
       </header>
 

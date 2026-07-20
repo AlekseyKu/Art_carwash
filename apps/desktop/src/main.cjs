@@ -246,8 +246,94 @@ function startApi(nodeBin) {
   });
 }
 
-function updateConfigPath() {
-  return path.join(app.getPath("userData"), "update-config.json");
+function resolveLaunchExecutable() {
+  const fromEnv = process.env.PORTABLE_EXECUTABLE_FILE;
+  if (fromEnv && fs.existsSync(fromEnv)) return fromEnv;
+
+  const dir = process.env.PORTABLE_EXECUTABLE_DIR;
+  if (dir && fs.existsSync(dir)) {
+    try {
+      const exes = fs.readdirSync(dir).filter((f) => /\.exe$/i.test(f));
+      const preferred =
+        exes.find((f) => /ArtCarwash|POS/i.test(f)) ||
+        exes.find((f) => !/^unins/i.test(f));
+      if (preferred) {
+        const full = path.join(dir, preferred);
+        if (fs.existsSync(full)) return full;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return process.execPath;
+}
+
+/** Ярлык ArtCarwash.lnk на рабочий стол (Windows). */
+function ensureDesktopShortcut() {
+  if (process.platform !== "win32") return;
+  if (!app.isPackaged) return;
+  try {
+    const target = resolveLaunchExecutable();
+    if (!target || !fs.existsSync(target)) return;
+    const desktop = app.getPath("desktop");
+    const lnk = path.join(desktop, "ArtCarwash.lnk");
+    const workDir = path.dirname(target);
+    const ps = `
+$ErrorActionPreference = 'Stop'
+$shell = New-Object -ComObject WScript.Shell
+$sc = $shell.CreateShortcut(${JSON.stringify(lnk)})
+$sc.TargetPath = ${JSON.stringify(target)}
+$sc.WorkingDirectory = ${JSON.stringify(workDir)}
+$sc.Description = 'Автомойка АРТ — касса'
+$sc.Save()
+`;
+    const r = spawnSync(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-Command", ps],
+      { encoding: "utf8", windowsHide: true, timeout: 15000 }
+    );
+    if (r.status !== 0) {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "update.log"),
+        `${new Date().toISOString()} shortcut FAILED: ${r.stderr || r.stdout || r.status}\n`,
+        "utf8"
+      );
+      return;
+    }
+    fs.appendFileSync(
+      path.join(app.getPath("userData"), "update.log"),
+      `${new Date().toISOString()} shortcut OK → ${lnk} → ${target}\n`,
+      "utf8"
+    );
+  } catch (e) {
+    try {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "update.log"),
+        `${new Date().toISOString()} shortcut ERR: ${e instanceof Error ? e.message : String(e)}\n`,
+        "utf8"
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function minimizeWindow() {
+  if (!mainWindow) return { ok: false, error: "Нет окна" };
+  try {
+    if (mainWindow.isKiosk()) mainWindow.setKiosk(false);
+    if (mainWindow.isFullScreen()) mainWindow.setFullScreen(false);
+    mainWindow.setMenuBarVisibility(false);
+    mainWindow.minimize();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function closeWindow() {
+  setTimeout(() => app.quit(), 50);
+  return { ok: true };
 }
 
 function getUpdater() {
@@ -310,6 +396,14 @@ function startControlServer() {
           updatesDir: path.join(app.getPath("userData"), "updates"),
           logPath: path.join(app.getPath("userData"), "update.log"),
         });
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/window/minimize") {
+        send(200, minimizeWindow());
+        return;
+      }
+      if (req.method === "POST" && url.pathname === "/window/close") {
+        send(200, closeWindow());
         return;
       }
       if (req.method === "POST" && url.pathname === "/github-token") {
@@ -437,6 +531,7 @@ async function boot() {
     nodeBinCached = resolved.bin;
     startApi(resolved.bin);
     await waitForHealth();
+    ensureDesktopShortcut();
     createWindow();
   } catch (err) {
     const message =
