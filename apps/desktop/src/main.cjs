@@ -110,37 +110,121 @@ function resolveWebDist() {
   return "";
 }
 
-/** Portable + Windows: app.relaunch() часто не поднимает процесс — spawn detached надёжнее. */
-function scheduleRelaunch() {
+function logUpdate(line) {
   try {
-    const { updateLogPath } = require("./updater.cjs");
-    const logLine = (s) => {
+    fs.appendFileSync(
+      path.join(app.getPath("userData"), "update.log"),
+      `${new Date().toISOString()} ${line}\n`,
+      "utf8"
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+function portInUse(port) {
+  return new Promise((resolve) => {
+    const srv = http.createServer();
+    srv.once("error", () => resolve(true));
+    srv.once("listening", () => {
+      srv.close(() => resolve(false));
+    });
+    srv.listen(port, "127.0.0.1");
+  });
+}
+
+async function waitForPortFree(port, timeoutMs = 15000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const busy = await portInUse(port);
+    if (!busy) return;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`Порт ${port} занят — закройте старую кассу и попробуйте снова`);
+}
+
+function killProcessTree(pid) {
+  if (!pid) return;
+  try {
+    if (process.platform === "win32") {
+      spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+    } else {
       try {
-        fs.appendFileSync(updateLogPath(), `${new Date().toISOString()} ${s}\n`, "utf8");
+        process.kill(pid, "SIGKILL");
       } catch {
         /* ignore */
       }
-    };
-    logLine(`relaunch execPath=${process.execPath}`);
-    const child = spawn(process.execPath, process.argv.slice(1), {
-      detached: true,
-      stdio: "ignore",
-      cwd: path.dirname(process.execPath),
-      env: process.env,
-      windowsHide: false,
-    });
-    child.unref();
-    logLine(`relaunch spawned pid=${child.pid}`);
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Portable: нельзя spawn(process.execPath) — это TEMP-распаковка.
+ * Сначала выходим, через 2с стартуем исходный portable.exe.
+ */
+function scheduleRelaunch() {
+  const exe = resolveLaunchExecutable();
+  logUpdate(`relaunch schedule exe=${exe} execPath=${process.execPath}`);
+
+  try {
+    if (process.platform === "win32") {
+      const bat = path.join(
+        app.getPath("temp"),
+        `art-relaunch-${Date.now()}.cmd`
+      );
+      // Ждём освобождение портов, затем стартуем portable stub
+      const content = [
+        "@echo off",
+        "timeout /t 2 /nobreak >nul",
+        `start "" ${JSON.stringify(exe)}`,
+        'del "%~f0"',
+        "",
+      ].join("\r\n");
+      fs.writeFileSync(bat, content, "utf8");
+      spawn("cmd.exe", ["/c", bat], {
+        detached: true,
+        stdio: "ignore",
+        windowsHide: true,
+      }).unref();
+      logUpdate(`relaunch bat=${bat}`);
+    } else {
+      spawn(exe, [], {
+        detached: true,
+        stdio: "ignore",
+        cwd: path.dirname(exe),
+        env: process.env,
+      }).unref();
+    }
   } catch (e) {
+    logUpdate(`relaunch FAILED: ${e instanceof Error ? e.message : String(e)}`);
     try {
-      app.relaunch();
+      app.relaunch({ execPath: exe });
     } catch {
       /* ignore */
     }
   }
+
+  try {
+    if (ctrlServer) {
+      ctrlServer.close();
+      ctrlServer = null;
+    }
+  } catch {
+    /* ignore */
+  }
+  if (apiProc && !apiProc.killed) {
+    killProcessTree(apiProc.pid);
+    apiProc = null;
+  }
+
   setTimeout(() => {
     app.exit(0);
-  }, 400);
+  }, 300);
 }
 
 function waitForHealth(timeoutMs = 45000) {
@@ -168,6 +252,42 @@ function waitForHealth(timeoutMs = 45000) {
   });
 }
 
+/** Убедиться, что раздаётся UI (не только /api/health). */
+function waitForUi(timeoutMs = 20000) {
+  const started = Date.now();
+  return new Promise((resolve, reject) => {
+    const tick = () => {
+      const req = http.get(`http://127.0.0.1:${PORT}/`, (res) => {
+        const chunks = [];
+        res.on("data", (c) => chunks.push(c));
+        res.on("end", () => {
+          const body = Buffer.concat(chunks).toString("utf8");
+          if (
+            res.statusCode === 200 &&
+            (/<!doctype html/i.test(body) || /id=["']root["']/i.test(body))
+          ) {
+            resolve();
+            return;
+          }
+          if (Date.now() - started > timeoutMs) {
+            reject(
+              new Error(
+                "UI не отдаётся (белый экран). Проверьте ART_WEB_DIST / runtime/web."
+              )
+            );
+          } else setTimeout(tick, 300);
+        });
+      });
+      req.on("error", () => {
+        if (Date.now() - started > timeoutMs) {
+          reject(new Error("UI не отвечает после старта API"));
+        } else setTimeout(tick, 300);
+      });
+    };
+    tick();
+  });
+}
+
 function stopApi() {
   return new Promise((resolve) => {
     if (!apiProc || apiProc.killed) {
@@ -176,17 +296,17 @@ function stopApi() {
       return;
     }
     const child = apiProc;
+    const pid = child.pid;
     apiProc = null;
-    child.once("exit", () => resolve());
-    child.kill();
-    setTimeout(() => {
-      try {
-        child.kill("SIGKILL");
-      } catch {
-        /* ignore */
-      }
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
       resolve();
-    }, 3000);
+    };
+    child.once("exit", finish);
+    killProcessTree(pid);
+    setTimeout(finish, 1500);
   });
 }
 
@@ -197,6 +317,12 @@ function startApi(nodeBin) {
   }
 
   const webDist = resolveWebDist();
+  if (!webDist) {
+    throw new Error(
+      "Не найден UI (web/index.html). Проверьте resources/web или %APPDATA%/…/runtime/web"
+    );
+  }
+
   const dataDir = path.join(app.getPath("userData"), "data");
   fs.mkdirSync(dataDir, { recursive: true });
 
@@ -204,7 +330,7 @@ function startApi(nodeBin) {
     ...process.env,
     PORT: String(PORT),
     ART_DATA_DIR: dataDir,
-    ART_WEB_DIST: webDist || "",
+    ART_WEB_DIST: webDist,
     ART_DESKTOP_CTRL_URL: `http://127.0.0.1:${CTRL_PORT}`,
     ART_DESKTOP_CTRL_TOKEN: ctrlToken,
   };
@@ -214,7 +340,15 @@ function startApi(nodeBin) {
   const cwd = path.dirname(path.dirname(entry));
   const logFile = path.join(app.getPath("userData"), "local-api.log");
 
-  lastApiError = `Запуск: ${nodeBin} ${args.join(" ")}\nКаталог: ${cwd}`;
+  lastApiError = `Запуск: ${nodeBin} ${args.join(" ")}\nКаталог: ${cwd}\nWEB: ${webDist}`;
+  logUpdate(`startApi entry=${entry} web=${webDist}`);
+
+  // Обнуляем лог API при старте, чтобы видеть свежие ошибки
+  try {
+    fs.writeFileSync(logFile, `${new Date().toISOString()} start\n`, "utf8");
+  } catch {
+    /* ignore */
+  }
 
   apiProc = spawn(nodeBin, args, {
     env,
@@ -444,11 +578,12 @@ function startControlServer() {
           }
           // 2) Останавливаем API, чтобы снять блокировки файлов на Windows
           await stopApi();
+          await new Promise((r) => setTimeout(r, 400));
           const result = updater.commitPrepared(prepared);
           send(200, result);
           if (result.restart) {
-            // Ответ уже ушёл клиенту — поднимаем новый процесс и выходим
-            setTimeout(() => scheduleRelaunch(), 600);
+            // Сначала полностью выходим, через ~2с bat стартует portable.exe
+            setTimeout(() => scheduleRelaunch(), 400);
           } else if (nodeBinCached) {
             startApi(nodeBinCached);
           }
@@ -510,17 +645,14 @@ function createWindow() {
 
 async function boot() {
   try {
+    await waitForPortFree(CTRL_PORT);
+    await waitForPortFree(PORT);
     await startControlServer();
     const paths = appPaths();
-    try {
-      fs.appendFileSync(
-        path.join(app.getPath("userData"), "update.log"),
-        `${new Date().toISOString()} boot source=${paths.source} web=${paths.webDir} ver=${versionPath()}\n`,
-        "utf8"
-      );
-    } catch {
-      /* ignore */
-    }
+    const webDist = resolveWebDist();
+    logUpdate(
+      `boot source=${paths.source} web=${webDist || paths.webDir} api=${paths.apiDir} ver=${versionPath()} portable=${resolveLaunchExecutable()}`
+    );
     const resolved = resolveNodeBinary();
     if (!resolved) {
       throw new Error(
@@ -531,6 +663,7 @@ async function boot() {
     nodeBinCached = resolved.bin;
     startApi(resolved.bin);
     await waitForHealth();
+    await waitForUi();
     ensureDesktopShortcut();
     createWindow();
   } catch (err) {
@@ -538,12 +671,24 @@ async function boot() {
       err instanceof Error
         ? err.message
         : `Не удалось запустить кассу. Нужен Node.js ${MIN_NODE_MAJOR}+.`;
+    logUpdate(`boot FAILED: ${message}`);
     dialog.showErrorBox("Автомойка АРТ", message);
     app.quit();
   }
 }
 
-app.whenReady().then(boot);
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+  app.whenReady().then(boot);
+}
 
 app.on("window-all-closed", () => {
   app.quit();
@@ -552,7 +697,8 @@ app.on("window-all-closed", () => {
 app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   if (apiProc && !apiProc.killed) {
-    apiProc.kill();
+    killProcessTree(apiProc.pid);
+    apiProc = null;
   }
   if (ctrlServer) {
     ctrlServer.close();

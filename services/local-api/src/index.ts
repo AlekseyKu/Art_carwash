@@ -812,7 +812,12 @@ app.post<{
 });
 
 const webDist = process.env.ART_WEB_DIST?.trim();
-if (webDist && fs.existsSync(path.join(webDist, "index.html"))) {
+if (webDist) {
+  const indexHtml = path.join(webDist, "index.html");
+  if (!fs.existsSync(indexHtml)) {
+    console.error(`[web] ART_WEB_DIST задан, но нет index.html: ${indexHtml}`);
+    process.exit(1);
+  }
   await app.register(fastifyStatic, {
     root: path.resolve(webDist),
     wildcard: false,
@@ -824,6 +829,8 @@ if (webDist && fs.existsSync(path.join(webDist, "index.html"))) {
     return reply.sendFile("index.html");
   });
   console.log(`[web] static from ${path.resolve(webDist)}`);
+} else {
+  console.warn("[web] ART_WEB_DIST не задан — UI не раздаётся (возможен белый экран в Electron)");
 }
 
 const port = Number(process.env.PORT ?? 3001);

@@ -1039,7 +1039,9 @@ export function AdminPage() {
                     .then((r) => {
                       setUpdateInfo((prev) => ({ ...prev, ...r, updateAvailable: false }));
                       if (r.restart) {
-                        setSyncMsg("Обновление установлено, приложение перезапускается…");
+                        setSyncMsg(
+                          "Обновление установлено. Касса закроется и через пару секунд откроется снова. Если окно не появилось — запустите ярлык ArtCarwash."
+                        );
                       }
                     })
                     .catch((e) => setError(e.message))
