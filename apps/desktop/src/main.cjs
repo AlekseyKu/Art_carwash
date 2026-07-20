@@ -514,6 +514,10 @@ function closeWindow() {
   return { ok: true };
 }
 
+function updateConfigPath() {
+  return path.join(app.getPath("userData"), "update-config.json");
+}
+
 function getUpdater() {
   return createUpdater({
     resourcesDir: resourcesRoot(),
