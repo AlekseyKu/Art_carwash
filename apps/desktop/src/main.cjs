@@ -4,7 +4,43 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { createUpdater, resolveAppPaths, setUserDataDir } = require("./updater.cjs");
+
+/** Упакованный updater; после in-app update может подмениться runtime/desktop/updater.cjs */
+let updaterMod = require("./updater.cjs");
+let createUpdater = updaterMod.createUpdater;
+let resolveAppPaths = updaterMod.resolveAppPaths;
+let setUserDataDir = updaterMod.setUserDataDir;
+
+function loadRuntimeUpdaterIfPresent() {
+  try {
+    const runtimeUpdater = path.join(app.getPath("userData"), "runtime", "desktop", "updater.cjs");
+    if (!fs.existsSync(runtimeUpdater)) return false;
+    try {
+      delete require.cache[require.resolve(runtimeUpdater)];
+    } catch {
+      delete require.cache[runtimeUpdater];
+    }
+    const mod = require(runtimeUpdater);
+    if (typeof mod.createUpdater !== "function") {
+      throw new Error("runtime updater без createUpdater");
+    }
+    updaterMod = mod;
+    createUpdater = mod.createUpdater;
+    resolveAppPaths = mod.resolveAppPaths || resolveAppPaths;
+    setUserDataDir = mod.setUserDataDir || setUserDataDir;
+    return true;
+  } catch (e) {
+    try {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "update.log"),
+        `${new Date().toISOString()} runtime updater load failed: ${e instanceof Error ? e.message : String(e)}\n`
+      );
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+}
 
 const PORT = Number(process.env.ART_PORT || 3001);
 const CTRL_PORT = Number(process.env.ART_DESKTOP_CTRL_PORT || 3921);
@@ -707,7 +743,12 @@ async function boot() {
     const userData = app.getPath("userData");
     setUserDataDir(userData);
     fs.mkdirSync(userData, { recursive: true });
-    logUpdate(`userData=${userData}`);
+    const usedRuntimeUpdater = loadRuntimeUpdaterIfPresent();
+    // setUserDataDir мог обновиться из runtime-модуля
+    setUserDataDir(userData);
+    logUpdate(
+      `userData=${userData} updater=${usedRuntimeUpdater ? "runtime/desktop" : "packaged"}`
+    );
 
     await waitForPortFree(CTRL_PORT);
     await waitForPortFree(PORT);

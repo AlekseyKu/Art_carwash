@@ -62,6 +62,15 @@ fs.writeFileSync(
 rimraf(webOut);
 copyDir(path.join(repoRoot, "apps", "web", "dist"), webOut);
 
+// Логика обновлений в zip → runtime/desktop (hot-patch без новой portable)
+const desktopOut = path.join(resources, "desktop");
+rimraf(desktopOut);
+fs.mkdirSync(desktopOut, { recursive: true });
+fs.copyFileSync(
+  path.join(desktopRoot, "src", "updater.cjs"),
+  path.join(desktopOut, "updater.cjs")
+);
+
 const desktopPkg = JSON.parse(
   fs.readFileSync(path.join(desktopRoot, "package.json"), "utf8")
 );

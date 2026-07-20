@@ -65,22 +65,28 @@ pnpm release:pos
 ```
 
 Создаётся GitHub Release с тегом `pos-vX.Y.Z` и файлами:
-- `art-pos-update.zip` — web + api (кнопка «Обновить» в админке)
-- `ArtCarwash-POS-X.Y.Z-portable.exe` — полная сборка
+- `art-pos-update.zip` — web + api + `desktop/updater.cjs` (кнопка «Обновить» в админке)
+- `ArtCarwash-POS-X.Y.Z-portable.exe` — полная сборка (нужна при первой установке / смене оболочки)
 
 2. На кассе (нужен интернет):  
+   - Репозиторий **публичный** → token не нужен.  
    - Репозиторий **приватный** → один раз сохраните GitHub Personal Access Token  
      (fine-grained или classic, право **Contents: Read** на `AlekseyKu/Art_carwash`)  
      в **Админ → Обновления**.  
    - Затем **Проверить → Обновить**.  
-   Приложение скачает `art-pos-update.zip` во временную папку, поставит `web`+`api` в  
-   `%APPDATA%/автомойка-арт/runtime` и перезапустится (detached spawn).  
+   Приложение скачает `art-pos-update.zip`, поставит `web`+`api` (+ `desktop/updater.cjs`) в  
+   `%APPDATA%/ArtCarwash-POS/runtime` и перезапустится.  
+   При следующем старте Electron предпочитает `runtime/desktop/updater.cjs` — фиксы логики  
+   обновлений тоже приходят через zip, без новой portable.  
    Portable `.exe` при каждом запуске пересобирает свой `resources` — поэтому обновление  
    **не пишется внутрь exe**, а лежит в AppData и подхватывается при старте.  
-   SQLite в `%APPDATA%/автомойка-арт/data` не трогается.  
-   Token: `%APPDATA%/автомойка-арт/update-config.json`.  
-   Лог обновлений: `%APPDATA%/автомойка-арт/update.log`.  
-   Загрузки/бэкапы: `%APPDATA%/автомойка-арт/updates`.
+   SQLite в `%APPDATA%/ArtCarwash-POS/data` не трогается.  
+   Token: `%APPDATA%/ArtCarwash-POS/update-config.json`.  
+   Лог обновлений: `%APPDATA%/ArtCarwash-POS/update.log`.  
+   Загрузки/бэкапы: `%APPDATA%/ArtCarwash-POS/updates`.
+
+Выбор версии: среди Releases с `art-pos-update.zip` берётся **максимальный semver**  
+(список GitHub не отсортирован по версиям — иначе «первый» мог быть 0.2.9 при наличии 0.2.12).
 
 ## Код
 

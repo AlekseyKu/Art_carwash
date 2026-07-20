@@ -980,6 +980,8 @@ export function AdminPage() {
               Проверка и установка с GitHub Releases (
               {updateInfo?.repo ?? "AlekseyKu/Art_carwash"}). Работает в приложении
               ArtCarwash-POS при наличии интернета. База данных не затрагивается.
+              Обновление ставит UI/API и логику обновлений в AppData — без ручной
+              скачки portable, кроме редких правок самой оболочки Electron.
             </p>
             <p>
               Текущая версия:{" "}

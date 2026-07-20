@@ -40,11 +40,33 @@ function readJson(file, fallback = null) {
 
 function parseSemver(v) {
   const m = String(v || "")
-    .replace(/^v/i, "")
+    .trim()
     .replace(/^pos-/i, "")
+    .replace(/^v/i, "")
     .match(/^(\d+)\.(\d+)\.(\d+)/);
   if (!m) return null;
   return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function versionFromTag(tag) {
+  const raw = String(tag || "").trim();
+  const parsed = parseSemver(raw);
+  if (parsed) return parsed.join(".");
+  const stripped = raw.replace(/^pos-/i, "").replace(/^v/i, "");
+  const again = parseSemver(stripped);
+  return again ? again.join(".") : null;
+}
+
+function releaseHasUpdateZip(release) {
+  return (release?.assets || []).some(
+    (a) => a.name === ASSET_NAME || /^art-pos-update.*\.zip$/i.test(a.name)
+  );
+}
+
+function pickUpdateAsset(release) {
+  return (release?.assets || []).find(
+    (a) => a.name === ASSET_NAME || /^art-pos-update.*\.zip$/i.test(a.name)
+  );
 }
 
 function cmpSemver(a, b) {
@@ -288,7 +310,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     let releases;
     try {
       releases = await httpGetJson(
-        `https://api.github.com/repos/${repo}/releases?per_page=15`,
+        `https://api.github.com/repos/${repo}/releases?per_page=40`,
         githubHeaders()
       );
     } catch (e) {
@@ -316,11 +338,34 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         message: "На GitHub пока нет Releases",
       };
     }
-    const release = releases.find((r) =>
-      (r.assets || []).some(
-        (a) => a.name === ASSET_NAME || /^art-pos-update.*\.zip$/i.test(a.name)
-      )
-    );
+
+    // /releases/latest + полный список: GitHub сортирует не по semver (0.2.9 > 0.2.12 как строки).
+    let latestRelease = null;
+    try {
+      latestRelease = await httpGetJson(
+        `https://api.github.com/repos/${repo}/releases/latest`,
+        githubHeaders()
+      );
+    } catch {
+      latestRelease = null;
+    }
+
+    const candidates = [];
+    if (latestRelease && releaseHasUpdateZip(latestRelease)) candidates.push(latestRelease);
+    for (const r of releases) {
+      if (releaseHasUpdateZip(r)) candidates.push(r);
+    }
+
+    let release = null;
+    let bestVer = null;
+    for (const r of candidates) {
+      const ver = versionFromTag(r.tag_name || "");
+      if (!ver) continue;
+      if (!bestVer || cmpSemver(bestVer, ver) < 0) {
+        bestVer = ver;
+        release = r;
+      }
+    }
     if (!release) {
       return {
         ok: true,
@@ -332,13 +377,8 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       };
     }
     const tag = release.tag_name || "";
-    const ver =
-      parseSemver(tag)?.join(".") ||
-      tag.replace(/^pos-v?/i, "").replace(/^v/i, "") ||
-      null;
-    const asset = (release.assets || []).find(
-      (a) => a.name === ASSET_NAME || /^art-pos-update.*\.zip$/i.test(a.name)
-    );
+    const ver = bestVer;
+    const asset = pickUpdateAsset(release);
     if (!asset?.url && !asset?.browser_download_url) {
       return {
         ok: true,
@@ -353,7 +393,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     const current = currentVersion();
     const latest = ver || current;
     const updateAvailable = cmpSemver(current, latest) < 0;
-    appendLog(`check current=${current} latest=${latest} available=${updateAvailable}`);
+    appendLog(`check current=${current} latest=${latest} available=${updateAvailable} tag=${tag}`);
     // API asset URL требует auth даже для public; без token качаем browser_download_url.
     const assetUrl = hasGithubToken
       ? asset.url || asset.browser_download_url
@@ -414,6 +454,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
 
     const webSrc = path.join(root, "web");
     const apiSrc = path.join(root, "api");
+    const desktopSrc = path.join(root, "desktop");
     const verSrc = path.join(root, "version.json");
     if (!fs.existsSync(path.join(webSrc, "index.html"))) {
       throw new Error("В архиве нет web/index.html");
@@ -429,6 +470,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     fs.mkdirSync(stagingDir, { recursive: true });
     copyDir(webSrc, path.join(stagingDir, "web"));
     copyDir(apiSrc, path.join(stagingDir, "api"));
+    // Hot-patch логики обновлений: следующий запуск подхватит runtime/desktop/updater.cjs
+    if (fs.existsSync(path.join(desktopSrc, "updater.cjs"))) {
+      copyDir(desktopSrc, path.join(stagingDir, "desktop"));
+    }
     if (fs.existsSync(verSrc)) {
       fs.copyFileSync(verSrc, path.join(stagingDir, "version.json"));
     } else {
@@ -455,7 +500,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       extractDir,
       latestVersion: info.latestVersion,
       currentVersion: info.currentVersion,
-      hasGithubToken: true,
+      hasGithubToken: Boolean(info.hasGithubToken),
     };
   }
 
@@ -517,7 +562,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       logPath: updateLogPath(),
       message: `Обновлено до ${prepared.latestVersion}. Перезапуск…`,
       restart: true,
-      hasGithubToken: true,
+      hasGithubToken: Boolean(getToken()),
     };
   }
 
@@ -545,6 +590,8 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
 module.exports = {
   createUpdater,
   cmpSemver,
+  parseSemver,
+  versionFromTag,
   ASSET_NAME,
   DEFAULT_REPO,
   resolveAppPaths,
