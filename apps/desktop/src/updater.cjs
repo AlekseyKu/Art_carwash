@@ -73,7 +73,7 @@ function httpGetJson(url, headers = {}) {
         if ((res.statusCode || 500) >= 400) {
           const hint =
             res.statusCode === 404
-              ? " (для приватного репозитория нужен GitHub token — Админ → Обновления)"
+              ? " (если репозиторий приватный — нужен GitHub token в Админ → Обновления)"
               : "";
           reject(new Error(`GitHub HTTP ${res.statusCode}${hint}: ${body.slice(0, 180)}`));
           return;
@@ -275,23 +275,16 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
   async function checkLatest() {
     const repo = process.env.ART_UPDATE_REPO || DEFAULT_REPO;
     const token = getToken();
+    const hasGithubToken = Boolean(token);
     const paths = resolveAppPaths(resourcesDir);
-    if (!token) {
-      return {
-        ok: false,
-        updateAvailable: false,
-        currentVersion: currentVersion(),
-        latestVersion: null,
-        hasGithubToken: false,
-        repo,
-        runtimeSource: paths.source,
-        runtimeDir: paths.runtimeDir,
-        updatesDir: tempDir,
-        logPath: updateLogPath(),
-        message:
-          "Репозиторий приватный: без GitHub token API отвечает 404. Создайте Personal Access Token (Contents: Read) и сохраните ниже.",
-      };
-    }
+    const baseMeta = {
+      hasGithubToken,
+      repo,
+      runtimeSource: paths.source,
+      runtimeDir: paths.runtimeDir,
+      updatesDir: tempDir,
+      logPath: updateLogPath(),
+    };
     let releases;
     try {
       releases = await httpGetJson(
@@ -300,18 +293,17 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
+      const needsToken =
+        !hasGithubToken && /\bGitHub HTTP (401|403|404)\b/.test(msg);
       return {
         ok: false,
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: null,
-        hasGithubToken: true,
-        repo,
-        runtimeSource: paths.source,
-        runtimeDir: paths.runtimeDir,
-        updatesDir: tempDir,
-        logPath: updateLogPath(),
-        message: msg,
+        ...baseMeta,
+        message: needsToken
+          ? "Не удалось прочитать Releases (HTTP 401/403/404). Если репозиторий приватный — сохраните GitHub token (Contents: Read) ниже."
+          : msg,
       };
     }
     if (!Array.isArray(releases) || releases.length === 0) {
@@ -320,12 +312,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: null,
-        hasGithubToken: true,
-        repo,
-        runtimeSource: paths.source,
-        runtimeDir: paths.runtimeDir,
-        updatesDir: tempDir,
-        logPath: updateLogPath(),
+        ...baseMeta,
         message: "На GitHub пока нет Releases",
       };
     }
@@ -340,12 +327,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: null,
-        hasGithubToken: true,
-        repo,
-        runtimeSource: paths.source,
-        runtimeDir: paths.runtimeDir,
-        updatesDir: tempDir,
-        logPath: updateLogPath(),
+        ...baseMeta,
         message: "Нет Release с файлом art-pos-update.zip",
       };
     }
@@ -363,12 +345,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         updateAvailable: false,
         currentVersion: currentVersion(),
         latestVersion: ver || null,
-        hasGithubToken: true,
-        repo,
-        runtimeSource: paths.source,
-        runtimeDir: paths.runtimeDir,
-        updatesDir: tempDir,
-        logPath: updateLogPath(),
+        ...baseMeta,
         message: "В Release нет art-pos-update.zip",
         releaseUrl: release.html_url || null,
       };
@@ -377,6 +354,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     const latest = ver || current;
     const updateAvailable = cmpSemver(current, latest) < 0;
     appendLog(`check current=${current} latest=${latest} available=${updateAvailable}`);
+    // API asset URL требует auth даже для public; без token качаем browser_download_url.
+    const assetUrl = hasGithubToken
+      ? asset.url || asset.browser_download_url
+      : asset.browser_download_url || asset.url;
     return {
       ok: true,
       updateAvailable,
@@ -386,16 +367,11 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       releaseNotes: release.body || "",
       releaseUrl: release.html_url || null,
       assetName: asset.name,
-      assetUrl: asset.url || asset.browser_download_url,
+      assetUrl,
       assetBrowserUrl: asset.browser_download_url || null,
       assetSize: asset.size,
       publishedAt: release.published_at || null,
-      hasGithubToken: true,
-      repo,
-      runtimeSource: paths.source,
-      runtimeDir: paths.runtimeDir,
-      updatesDir: tempDir,
-      logPath: updateLogPath(),
+      ...baseMeta,
       message: updateAvailable
         ? `Доступна версия ${latest}`
         : `Уже последняя версия (${current})`,
@@ -418,10 +394,11 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     rimraf(extractDir);
 
     appendLog(`download ${info.assetUrl}`);
-    await downloadFile(info.assetUrl, zipPath, {
-      ...githubHeaders(),
-      Accept: "application/octet-stream",
-    });
+    const dlHeaders = { ...githubHeaders() };
+    if (String(info.assetUrl).includes("api.github.com")) {
+      dlHeaders.Accept = "application/octet-stream";
+    }
+    await downloadFile(info.assetUrl, zipPath, dlHeaders);
     appendLog(`downloaded size=${fs.statSync(zipPath).size}`);
     extractZip(zipPath, extractDir);
 

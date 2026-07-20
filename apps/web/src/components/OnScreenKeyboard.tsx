@@ -69,6 +69,11 @@ type FieldProps = {
   style?: CSSProperties;
   /** Маскировать ввод (PIN / token) */
   secret?: boolean;
+  /**
+   * false — обычный input (удобно вставлять длинный token / URL).
+   * По умолчанию true — экранная клавиатура.
+   */
+  keyboard?: boolean;
 };
 
 export function TouchField({
@@ -82,8 +87,37 @@ export function TouchField({
   className = "",
   style,
   secret = false,
+  keyboard = true,
 }: FieldProps) {
   const kb = useTouchKeyboard();
+  if (!keyboard) {
+    const inputType =
+      secret ? "password" : mode === "pin" || mode === "numeric" ? "text" : "text";
+    const inputMode =
+      mode === "pin" ? "numeric" : mode === "numeric" ? "decimal" : mode === "ascii" ? "url" : "text";
+    return (
+      <input
+        className={`touch-field touch-field-input${className ? ` ${className}` : ""}`}
+        style={style}
+        type={inputType}
+        inputMode={inputMode}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={placeholder}
+        title={title}
+        maxLength={maxLength}
+        value={value}
+        onChange={(e) => {
+          let next = e.target.value;
+          if (mode === "pin") next = next.replace(/\D/g, "");
+          else if (mode === "numeric") next = next.replace(/[^\d.,]/g, "");
+          else if (mode === "ascii") next = next.replace(/[^\x20-\x7E]/g, "");
+          if (maxLength != null) next = next.slice(0, maxLength);
+          onChange(next);
+        }}
+      />
+    );
+  }
   const shown =
     secret && value ? "•".repeat(Math.min(value.length, 24)) : value || placeholder;
   return (
@@ -118,9 +152,11 @@ function KeyboardPanel({
   const [layout, setLayout] = useState<"ru" | "en">(
     session.layout ?? (session.mode === "ascii" ? "en" : "ru")
   );
+  const [pasteError, setPasteError] = useState("");
 
   useEffect(() => {
     setValue(session.value);
+    setPasteError("");
   }, [session]);
 
   useEffect(() => {
@@ -132,8 +168,12 @@ function KeyboardPanel({
   }, [onClose]);
 
   function commit(next: string) {
-    setValue(next);
-    session.onChange(next);
+    let out = next;
+    if (session.maxLength != null && out.length > session.maxLength) {
+      out = out.slice(0, session.maxLength);
+    }
+    setValue(out);
+    session.onChange(out);
   }
 
   function append(ch: string) {
@@ -155,6 +195,51 @@ function KeyboardPanel({
     commit(value.slice(0, -1));
   }
 
+  function applyPastedText(raw: string) {
+    const text = String(raw || "").replace(/\s+/g, "").trim();
+    if (!text) {
+      setPasteError("Буфер обмена пуст");
+      return;
+    }
+    const mode = session.mode;
+    let next = text;
+    if (mode === "pin") next = text.replace(/\D/g, "");
+    else if (mode === "numeric") next = text.replace(/[^\d.,]/g, "").replace(",", ".");
+    else if (mode === "ascii") next = text.replace(/[^\x20-\x7E]/g, "");
+    if (!next) {
+      setPasteError("В буфере нет подходящего текста");
+      return;
+    }
+    setPasteError("");
+    commit(next);
+  }
+
+  async function pasteFromClipboard() {
+    setPasteError("");
+    try {
+      if (!navigator.clipboard?.readText) {
+        setPasteError("Вставка недоступна в этой среде");
+        return;
+      }
+      const text = await navigator.clipboard.readText();
+      applyPastedText(text);
+    } catch {
+      setPasteError("Не удалось прочитать буфер — разрешите доступ к буферу обмена");
+    }
+  }
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const text = e.clipboardData?.getData("text") ?? "";
+      if (!text) return;
+      e.preventDefault();
+      applyPastedText(text);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // session/value intentionally via applyPastedText closure refresh each render
+  });
+
   const letterMode = session.mode === "text" || session.mode === "ascii";
   const rows = layout === "ru" ? RU_ROWS : EN_ROWS;
   const showSymbols = session.mode === "ascii" || layout === "en";
@@ -175,10 +260,20 @@ function KeyboardPanel({
               </div>
             )}
             <div className="osk-value">{value || <span className="muted">…</span>}</div>
+            {pasteError ? (
+              <div style={{ color: "var(--danger)", fontSize: "0.8rem", marginTop: "0.25rem" }}>
+                {pasteError}
+              </div>
+            ) : null}
           </div>
-          <button type="button" className="btn-primary" onClick={onClose}>
-            Готово
-          </button>
+          <div className="osk-header-actions">
+            <button type="button" className="btn-secondary" onClick={() => void pasteFromClipboard()}>
+              Вставить
+            </button>
+            <button type="button" className="btn-primary" onClick={onClose}>
+              Готово
+            </button>
+          </div>
         </div>
 
         {letterMode ? (

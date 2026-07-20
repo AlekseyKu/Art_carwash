@@ -1000,21 +1000,47 @@ export function AdminPage() {
               </p>
             )}
             <p className="muted" style={{ margin: 0 }}>
-              GitHub token:{" "}
+              GitHub token (необязательно для публичного репо):{" "}
               <strong>
                 {updateInfo?.hasGithubToken ? "сохранён на кассе" : "не задан"}
               </strong>
             </p>
             <div className="field">
-              <label>Personal Access Token (Contents: Read)</label>
-              <TouchField
-                title="GitHub token"
-                mode="ascii"
-                secret
-                placeholder="ghp_… или github_pat_…"
-                value={githubTokenInput}
-                onChange={setGithubTokenInput}
-              />
+              <label>Personal Access Token — только если репозиторий приватный (Contents: Read)</label>
+              <div className="row" style={{ alignItems: "stretch", gap: "0.5rem" }}>
+                <TouchField
+                  title="GitHub token"
+                  mode="ascii"
+                  secret
+                  keyboard={false}
+                  placeholder="ghp_… или github_pat_… (вставьте из буфера)"
+                  value={githubTokenInput}
+                  onChange={setGithubTokenInput}
+                />
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={updateBusy}
+                  style={{ flex: "0 0 auto" }}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const text = (await navigator.clipboard.readText()).replace(/\s+/g, "").trim();
+                        if (!text) {
+                          setError("Буфер обмена пуст");
+                          return;
+                        }
+                        setGithubTokenInput(text.replace(/[^\x20-\x7E]/g, ""));
+                        setError("");
+                      } catch {
+                        setError("Не удалось вставить из буфера — скопируйте token и нажмите «Вставить» ещё раз");
+                      }
+                    })();
+                  }}
+                >
+                  Вставить
+                </button>
+              </div>
             </div>
             <div className="row">
               <button
