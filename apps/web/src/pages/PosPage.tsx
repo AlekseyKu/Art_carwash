@@ -47,6 +47,7 @@ export function PosPage() {
   const [openShiftPrompt, setOpenShiftPrompt] = useState(false);
   const [rolloverPrompt, setRolloverPrompt] = useState(false);
   const [closeReport, setCloseReport] = useState<ShiftReportDto | null>(null);
+  const [shiftConfirm, setShiftConfirm] = useState<"open" | "close" | null>(null);
 
   function forceLogout(message?: string) {
     setWasherToken(null);
@@ -63,6 +64,7 @@ export function PosPage() {
     setOpenShiftPrompt(false);
     setRolloverPrompt(false);
     setCloseReport(null);
+    setShiftConfirm(null);
     if (message) setError(message);
   }
 
@@ -220,9 +222,9 @@ export function PosPage() {
 
   async function handleCloseShift() {
     if (!token || !shift) return;
-    if (!window.confirm("Закрыть текущую смену и показать отчёт?")) return;
     setShiftBusy(true);
     setError("");
+    setShiftConfirm(null);
     try {
       const report = await api.shiftClose(token);
       setShift(null);
@@ -232,6 +234,50 @@ export function PosPage() {
     } finally {
       setShiftBusy(false);
     }
+  }
+
+  async function handleOpenShiftManual() {
+    if (!token) return;
+    setShiftBusy(true);
+    setError("");
+    setShiftConfirm(null);
+    try {
+      const st = await refreshShift(token);
+      if (st?.needsRollover) return;
+      const res = await api.shiftOpen(token);
+      setShift(res.shift);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось открыть смену");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  function handleShiftPillClick() {
+    if (shiftBusy || rolloverPrompt || shiftConfirm) return;
+    setShiftConfirm(shift ? "close" : "open");
+  }
+
+  function formatShiftDate(iso?: string | null) {
+    const d = iso ? new Date(iso) : new Date();
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(d);
+  }
+
+  function formatShiftDateTime(iso?: string | null) {
+    if (!iso) return "—";
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: "Europe/Moscow",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
   }
 
   async function onPayClick() {
@@ -325,8 +371,8 @@ export function PosPage() {
       <div className="app-shell">
         <header className="topbar">
           <div className="brand">{BRAND_NAME}</div>
-          <div className="row" style={{ alignItems: "center" }}>
-            <Link className="muted" to="/admin">
+          <div className="topbar-actions">
+            <Link className="topbar-pill" to="/admin">
               Админ
             </Link>
             <WindowControls visible={desktopShell} />
@@ -372,33 +418,26 @@ export function PosPage() {
           <div className="brand">{BRAND_NAME}</div>
           <div className="muted" style={{ fontSize: "0.85rem" }}>
             {washerName || "Мойщик"} · заказ #{order?.number ?? "—"}
-            {" · "}
-            {shift ? "смена открыта" : "смена не открыта"}
           </div>
         </div>
-        <div className="row" style={{ alignItems: "center" }}>
-          <span className={`status-pill ${online ? "online" : "offline"}`}>
+        <div className="topbar-actions">
+          <span className={`topbar-pill ${online ? "online" : "offline"}`}>
             {online ? "Сеть OK" : "Офлайн"}
             {pendingSync > 0 ? ` · sync ${pendingSync}` : ""}
           </span>
-          {shift && (
-            <button
-              type="button"
-              className="btn-ghost"
-              disabled={shiftBusy}
-              onClick={() => void handleCloseShift()}
-            >
-              Закрыть смену
-            </button>
-          )}
-          <Link
-            to="/admin"
-            className="btn-ghost"
-            style={{ textDecoration: "none", display: "grid", placeItems: "center" }}
+          <button
+            type="button"
+            className={`topbar-pill ${shift ? "shift-open" : "shift-closed"}`}
+            disabled={shiftBusy || rolloverPrompt}
+            title={shift ? "Нажмите, чтобы закрыть смену" : "Нажмите, чтобы открыть смену"}
+            onClick={() => handleShiftPillClick()}
           >
+            {shift ? `Смена ${formatShiftDate(shift.openedAt)}` : "Смена не открыта"}
+          </button>
+          <Link to="/admin" className="topbar-pill">
             Админ
           </Link>
-          <button type="button" className="btn-ghost" onClick={() => void logout()}>
+          <button type="button" className="topbar-pill" onClick={() => void logout()}>
             Смена PIN
           </button>
           <WindowControls visible={desktopShell} />
@@ -546,6 +585,69 @@ export function PosPage() {
             </div>
             <RecentOrdersPanel token={token} refreshKey={recentKey} embedded />
           </aside>
+        </div>
+      )}
+
+      {shiftConfirm === "open" && (
+        <div className="modal-backdrop">
+          <div className="modal stack">
+            <h2 className="h2">Открытие смены</h2>
+            <p style={{ margin: 0 }}>
+              Будет открыта новая кассовая смена на{" "}
+              <strong>{formatShiftDate()}</strong>. Продажи и оплаты будут привязаны к этой смене.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={shiftBusy}
+              onClick={() => void handleOpenShiftManual()}
+            >
+              Открыть
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={shiftBusy}
+              onClick={() => setShiftConfirm(null)}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      {shiftConfirm === "close" && shift && (
+        <div className="modal-backdrop">
+          <div className="modal stack">
+            <h2 className="h2">Закрытие смены</h2>
+            <p style={{ margin: 0 }}>
+              Смена <strong>{formatShiftDate(shift.openedAt)}</strong> будет закрыта.
+              {shift.openedByName ? (
+                <>
+                  {" "}
+                  Открыл: <strong>{shift.openedByName}</strong>
+                  {shift.openedAt ? ` (${formatShiftDateTime(shift.openedAt)})` : ""}.
+                </>
+              ) : null}{" "}
+              После закрытия покажется краткий отчёт по продажам.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={shiftBusy}
+              onClick={() => void handleCloseShift()}
+            >
+              Закрыть
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={shiftBusy}
+              onClick={() => setShiftConfirm(null)}
+            >
+              Отмена
+            </button>
+          </div>
         </div>
       )}
 

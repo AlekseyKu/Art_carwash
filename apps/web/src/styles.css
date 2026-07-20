@@ -111,24 +111,110 @@ button:disabled {
   border-bottom: 1px solid var(--brand-silver-soft);
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Единый стиль контролов шапки (как «Сеть OK») */
+.topbar-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+  text-decoration: none;
+  white-space: nowrap;
+  box-sizing: border-box;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+a.topbar-pill {
+  color: var(--ink);
+}
+
+.topbar-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
+}
+
+.topbar-pill:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.topbar-pill:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.topbar-pill.online {
+  color: var(--success);
+}
+
+.topbar-pill.offline {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 40%, white);
+}
+
+.topbar-pill.shift-open {
+  color: var(--ink);
+}
+
+.topbar-pill.shift-closed {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 40%, white);
+}
+
+.topbar-pill.active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #fff;
+}
+
+.topbar-pill.active:hover:not(:disabled) {
+  background: var(--brand-primary-hover);
+  border-color: var(--brand-primary-hover);
+  color: #fff;
+}
+
 .window-controls {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  margin-left: 0.15rem;
+  gap: 0.5rem;
 }
 
 .window-btn {
-  width: 40px;
-  height: 40px;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  min-width: 2.25rem;
+  padding: 0;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  border: 1px solid color-mix(in srgb, var(--brand-silver) 70%, transparent);
+  border-radius: 50%;
+  border: 1px solid var(--brand-silver-soft);
   background: #fff;
   color: var(--ink);
   cursor: pointer;
-  padding: 0;
+  box-sizing: border-box;
+  transition: transform 0.12s ease, background 0.15s ease;
+}
+
+.window-btn:hover {
+  background: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
 }
 
 .window-btn:active {
@@ -136,11 +222,12 @@ button:disabled {
 }
 
 .window-btn-close {
-  color: var(--danger, #c0392b);
+  color: var(--danger);
 }
 
 .window-btn-close:hover {
-  background: color-mix(in srgb, var(--danger, #c0392b) 12%, white);
+  background: color-mix(in srgb, var(--danger) 12%, white);
+  border-color: color-mix(in srgb, var(--danger) 35%, white);
 }
 
 .brand {
@@ -151,15 +238,21 @@ button:disabled {
 }
 
 .status-pill {
+  /* совместимость: визуал как topbar-pill */
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.75rem;
+  gap: 0.35rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  padding: 0 0.9rem;
   border-radius: 999px;
+  font-family: var(--font);
   font-size: 0.8rem;
   font-weight: 600;
+  line-height: 1;
   background: #fff;
   border: 1px solid var(--brand-silver-soft);
+  box-sizing: border-box;
 }
 
 .status-pill.offline {
@@ -278,16 +371,24 @@ button:disabled {
   font-weight: 800;
 }
 
-.admin-nav {
+.admin-nav,
+.admin-subnav {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--brand-silver-soft) 45%, white);
+  border: 1px solid var(--brand-silver-soft);
 }
 
-.admin-nav button.active {
-  background: var(--brand-primary);
-  color: #fff;
+.admin-nav {
+  margin-bottom: 0.5rem;
+}
+
+.admin-subnav {
+  margin-bottom: 1rem;
 }
 
 .catalog-tabs {

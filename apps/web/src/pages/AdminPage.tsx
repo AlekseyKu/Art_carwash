@@ -24,12 +24,28 @@ type FixedTab =
   | "updates"
   | "catalog-tabs";
 type Tab = FixedTab | `catalog:${string}`;
+type NavGroupId = "analytics" | "catalog" | "settings" | "admin";
+
+const MAIN_NAV: { id: NavGroupId; label: string }[] = [
+  { id: "analytics", label: "Аналитика" },
+  { id: "catalog", label: "Товары и услуги" },
+  { id: "settings", label: "Настройки" },
+  { id: "admin", label: "Администрирование" },
+];
+
+function navGroupForTab(t: Tab): NavGroupId {
+  if (t === "analytics") return "analytics";
+  if (t === "washers") return "settings";
+  if (t === "updates" || t === "terminal" || t === "security") return "admin";
+  return "catalog";
+}
 
 export function AdminPage() {
   const [token, setToken] = useState(getAdminToken());
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-  const [tab, setTab] = useState<Tab>("catalog:services");
+  const [tab, setTab] = useState<Tab>("analytics");
+  const [navGroup, setNavGroup] = useState<NavGroupId>("analytics");
 
   const [catalogTabs, setCatalogTabs] = useState<CatalogTabDto[]>([]);
   const [services, setServices] = useState<CatalogItemDto[]>([]);
@@ -209,19 +225,78 @@ export function AdminPage() {
       .finally(() => setUpdateBusy(false));
   }, [token, tab]);
 
-  const navTabs: { id: Tab; label: string }[] = [
-    ...catalogTabs
+  useEffect(() => {
+    setNavGroup(navGroupForTab(tab));
+  }, [tab]);
+
+  const catalogSubItems = useMemo(() => {
+    const tabs = catalogTabs
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"))
-      .map((ct) => ({ id: `catalog:${ct.slug}` as Tab, label: ct.name })),
-    { id: "catalog-tabs", label: "Вкладки" },
-    { id: "discounts", label: "Скидки" },
-    { id: "washers", label: "Мойщики" },
-    { id: "terminal", label: "Терминал" },
-    { id: "analytics", label: "Аналитика" },
-    { id: "updates", label: "Обновления" },
-    { id: "security", label: "Безопасность" },
-  ];
+      .map((ct) => ({
+        id: `catalog:${ct.slug}` as Tab,
+        label: ct.name,
+      }));
+    return [
+      ...tabs,
+      { id: "catalog-tabs" as Tab, label: "Вкладки" },
+      { id: "discounts" as Tab, label: "Скидки" },
+    ];
+  }, [catalogTabs]);
+
+  const subItems = useMemo(() => {
+    if (navGroup === "analytics") {
+      return [
+        { id: "period" as const, label: "Период" },
+        { id: "shifts" as const, label: "Смены" },
+      ];
+    }
+    if (navGroup === "catalog") return catalogSubItems;
+    if (navGroup === "settings") {
+      return [{ id: "washers" as Tab, label: "Мойщики" }];
+    }
+    return [
+      { id: "updates" as Tab, label: "Обновления" },
+      { id: "terminal" as Tab, label: "Терминал" },
+      { id: "security" as Tab, label: "Безопасность" },
+    ];
+  }, [navGroup, catalogSubItems]);
+
+  function selectNavGroup(group: NavGroupId) {
+    setNavGroup(group);
+    if (group === "analytics") {
+      setTab("analytics");
+      return;
+    }
+    if (group === "catalog") {
+      if (navGroupForTab(tab) !== "catalog") {
+        const first = catalogSubItems[0];
+        if (first) setTab(first.id);
+      }
+      return;
+    }
+    if (group === "settings") {
+      setTab("washers");
+      return;
+    }
+    if (navGroupForTab(tab) !== "admin") setTab("updates");
+  }
+
+  function isSubActive(item: { id: string }): boolean {
+    if (navGroup === "analytics") {
+      return tab === "analytics" && analyticsMode === item.id;
+    }
+    return tab === item.id;
+  }
+
+  function selectSubItem(item: { id: string }) {
+    if (navGroup === "analytics") {
+      setTab("analytics");
+      setAnalyticsMode(item.id as "period" | "shifts");
+      return;
+    }
+    setTab(item.id as Tab);
+  }
 
   if (!token) {
     return (
@@ -229,7 +304,11 @@ export function AdminPage() {
         <div className="app-shell">
           <header className="topbar">
             <div className="brand">{BRAND_NAME}</div>
-            <Link to="/">Касса</Link>
+            <div className="topbar-actions">
+              <Link to="/" className="topbar-pill">
+                Касса
+              </Link>
+            </div>
           </header>
           <main className="content" style={{ display: "grid", placeItems: "center" }}>
             <div className="panel" style={{ width: "min(420px, 100%)", textAlign: "center" }}>
@@ -270,13 +349,13 @@ export function AdminPage() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">{BRAND_NAME} · Админ</div>
-        <div className="row">
-          <Link to="/" className="btn-ghost" style={{ textDecoration: "none", display: "grid", placeItems: "center" }}>
+        <div className="topbar-actions">
+          <Link to="/" className="topbar-pill">
             Касса
           </Link>
           <button
             type="button"
-            className="btn-ghost"
+            className="topbar-pill"
             onClick={() => {
               setAdminToken(null);
               setToken(null);
@@ -289,18 +368,30 @@ export function AdminPage() {
 
       <main className="content">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-        <div className="admin-nav">
-          {navTabs.map((t) => (
+        <nav className="admin-nav" aria-label="Разделы админки">
+          {MAIN_NAV.map((g) => (
             <button
-              key={t.id}
+              key={g.id}
               type="button"
-              className={tab === t.id ? "active" : "btn-secondary"}
-              onClick={() => setTab(t.id)}
+              className={`topbar-pill${navGroup === g.id ? " active" : ""}`}
+              onClick={() => selectNavGroup(g.id)}
             >
-              {t.label}
+              {g.label}
             </button>
           ))}
-        </div>
+        </nav>
+        <nav className="admin-subnav" aria-label="Подменю">
+          {subItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`topbar-pill${isSubActive(item) ? " active" : ""}`}
+              onClick={() => selectSubItem(item)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
 
         {activeCatalogTab && (
           <div className="panel stack">
@@ -764,39 +855,23 @@ export function AdminPage() {
 
         {tab === "analytics" && (
           <div className="panel stack">
-            <div className="row">
-              <h2 className="h2" style={{ flex: 1 }}>
-                Аналитика
-              </h2>
-              <button
-                type="button"
-                className={analyticsMode === "period" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setAnalyticsMode("period")}
-              >
-                Период
-              </button>
-              <button
-                type="button"
-                className={analyticsMode === "shifts" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setAnalyticsMode("shifts")}
-              >
-                Смены
-              </button>
-            </div>
+            <h2 className="h2" style={{ marginBottom: 0 }}>
+              {analyticsMode === "shifts" ? "Аналитика · Смены" : "Аналитика · Период"}
+            </h2>
 
             {analyticsMode === "period" && (
               <>
                 <div className="row">
                   <button
                     type="button"
-                    className={period === "day" ? "btn-primary" : "btn-secondary"}
+                    className={`topbar-pill${period === "day" ? " active" : ""}`}
                     onClick={() => setPeriod("day")}
                   >
                     День
                   </button>
                   <button
                     type="button"
-                    className={period === "month" ? "btn-primary" : "btn-secondary"}
+                    className={`topbar-pill${period === "month" ? " active" : ""}`}
                     onClick={() => setPeriod("month")}
                   >
                     Месяц
