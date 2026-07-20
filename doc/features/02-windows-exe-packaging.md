@@ -23,10 +23,12 @@ pnpm dist:pos
 1. Установите [Node.js **22+** x64](https://nodejs.org/) (нужен `node:sqlite`; после установки **перезагрузите ПК**).
 2. Скопируйте только portable exe (папку `release` целиком не нужно).
 3. Запуск → полноэкранная касса (kiosk). При старте на рабочий стол создаётся ярлык **ArtCarwash**.
-4. Данные SQLite: `%APPDATA%/автомойка-арт/data` (Electron `userData`).
-5. Лог API при ошибках: `%APPDATA%/автомойка-арт/local-api.log`
-6. Выход: кнопка ✕ в шапке или `Ctrl+Shift+Q`. Свернуть: кнопка −. Переключить kiosk: `F11`.
-7. Окно не в kiosk (отладка): `ART_KIOSK=0` перед запуском.
+4. Данные SQLite: `%APPDATA%/ArtCarwash-POS/data` (если была старая папка `автомойка-арт` — она продолжает использоваться).
+5. Конфиг обновлений / GitHub token: `%APPDATA%/ArtCarwash-POS/update-config.json`
+6. Лог API: `%APPDATA%/ArtCarwash-POS/local-api.log`
+7. Лог обновлений: `%APPDATA%/ArtCarwash-POS/update.log`
+8. Выход: кнопка ✕ в шапке или `Ctrl+Shift+Q`. Свернуть: кнопка −. Переключить kiosk: `F11`.
+9. Окно не в kiosk (отладка): `ART_KIOSK=0` перед запуском.
 
 ### Вариант B — без Electron (Edge/Chrome kiosk)
 

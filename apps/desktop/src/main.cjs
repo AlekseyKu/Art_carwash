@@ -4,13 +4,57 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { createUpdater, resolveAppPaths } = require("./updater.cjs");
+const { createUpdater, resolveAppPaths, setUserDataDir } = require("./updater.cjs");
 
 const PORT = Number(process.env.ART_PORT || 3001);
 const CTRL_PORT = Number(process.env.ART_DESKTOP_CTRL_PORT || 3921);
 const KIOSK = process.env.ART_KIOSK !== "0";
 /** node:sqlite есть с Node 22.5+ */
 const MIN_NODE_MAJOR = 22;
+
+/**
+ * Стабильный ASCII userData (кириллический productName ломает пути на части ПК).
+ * Вызывать до app.ready.
+ */
+function configureUserDataPath() {
+  const appData =
+    process.env.APPDATA ||
+    (process.env.USERPROFILE
+      ? path.join(process.env.USERPROFILE, "AppData", "Roaming")
+      : "");
+  if (!appData) return;
+
+  const preferred = path.join(appData, "ArtCarwash-POS");
+  const legacyDirs = [
+    path.join(appData, "автомойка-арт"),
+    path.join(appData, "Автомойка АРТ"),
+    path.join(appData, "avtomoyka-art"),
+  ];
+
+  const hasDb = (dir) =>
+    fs.existsSync(path.join(dir, "data", "local.db")) ||
+    fs.existsSync(path.join(dir, "runtime", "version.json"));
+
+  try {
+    if (!hasDb(preferred)) {
+      for (const legacy of legacyDirs) {
+        if (!hasDb(legacy)) continue;
+        // Переезд: используем старый каталог, чтобы не потерять БД
+        app.setPath("userData", legacy);
+        return;
+      }
+    }
+    app.setPath("userData", preferred);
+  } catch {
+    try {
+      app.setPath("userData", preferred);
+    } catch {
+      /* ignore — останется default Electron */
+    }
+  }
+}
+
+configureUserDataPath();
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let apiProc = null;
@@ -645,6 +689,11 @@ function createWindow() {
 
 async function boot() {
   try {
+    const userData = app.getPath("userData");
+    setUserDataDir(userData);
+    fs.mkdirSync(userData, { recursive: true });
+    logUpdate(`userData=${userData}`);
+
     await waitForPortFree(CTRL_PORT);
     await waitForPortFree(PORT);
     await startControlServer();

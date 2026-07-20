@@ -1,6 +1,6 @@
 {
   "name": "@art/desktop",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "private": true,
   "description": "Сенсорная оболочка кассы Автомойка АРТ (Electron kiosk)",
   "main": "src/main.cjs",

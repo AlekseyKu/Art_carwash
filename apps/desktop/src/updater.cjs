@@ -6,10 +6,29 @@ const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
-const { app } = require("electron");
 
 const DEFAULT_REPO = process.env.ART_UPDATE_REPO || "AlekseyKu/Art_carwash";
 const ASSET_NAME = "art-pos-update.zip";
+
+/** Каталог userData передаётся из main после app.ready — без require('electron'). */
+let userDataDir = "";
+
+function setUserDataDir(dir) {
+  if (!dir || typeof dir !== "string") {
+    throw new Error("update configuration path: userDataDir не задан");
+  }
+  userDataDir = dir;
+  fs.mkdirSync(userDataDir, { recursive: true });
+}
+
+function requireUserData() {
+  if (!userDataDir) {
+    throw new Error(
+      "Update configuration path is not defined (userData). Перезапустите кассу / поставьте 0.2.8+"
+    );
+  }
+  return userDataDir;
+}
 
 function readJson(file, fallback = null) {
   try {
@@ -139,11 +158,11 @@ function sha256File(file) {
 }
 
 function runtimeRoot() {
-  return path.join(app.getPath("userData"), "runtime");
+  return path.join(requireUserData(), "runtime");
 }
 
 function updateLogPath() {
-  return path.join(app.getPath("userData"), "update.log");
+  return path.join(requireUserData(), "update.log");
 }
 
 function appendLog(line) {
@@ -156,7 +175,7 @@ function appendLog(line) {
 
 /**
  * Portable.exe при каждом холодном старте перезаписывает resources.
- * Актуальные web/api храним в %APPDATA%/…/runtime и предпочитаем их при запуске.
+ * Актуальные web/api храним в userData/runtime и предпочитаем их при запуске.
  */
 function resolveAppPaths(packagedResourcesDir) {
   const rt = runtimeRoot();
@@ -187,6 +206,15 @@ function resolveAppPaths(packagedResourcesDir) {
 }
 
 function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }) {
+  if (!configPath || typeof configPath !== "string") {
+    throw new Error("Update configuration path is not defined (configPath)");
+  }
+  if (!tempDir || typeof tempDir !== "string") {
+    throw new Error("Update tempDir is not defined");
+  }
+  fs.mkdirSync(path.dirname(configPath), { recursive: true });
+  fs.mkdirSync(tempDir, { recursive: true });
+  requireUserData();
   function readConfig() {
     return readJson(configPath, {}) || {};
   }
@@ -545,4 +573,5 @@ module.exports = {
   resolveAppPaths,
   runtimeRoot,
   updateLogPath,
+  setUserDataDir,
 };
