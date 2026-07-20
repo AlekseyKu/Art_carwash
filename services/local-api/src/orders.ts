@@ -1,6 +1,7 @@
 import { calcDiscountKopecks, type Discount, type PaymentMethod } from "@art/shared";
 import { nanoid } from "nanoid";
 import { db } from "./db.js";
+import { getOpenShift, isShiftStale } from "./shifts.js";
 import { enqueueOutbox } from "./sync.js";
 
 type OrderRow = {
@@ -189,9 +190,17 @@ export function markAwaitingPayment(orderId: string) {
 
 export function markPaid(orderId: string, method: PaymentMethod) {
   const now = new Date().toISOString();
-  db.prepare(
-    "UPDATE orders SET status = 'paid', payment_method = ?, paid_at = ?, updated_at = ? WHERE id = ?"
-  ).run(method, now, now, orderId);
+  const open = getOpenShift();
+  const shiftId = open && !isShiftStale(open) ? open.id : null;
+  if (shiftId) {
+    db.prepare(
+      "UPDATE orders SET status = 'paid', payment_method = ?, paid_at = ?, updated_at = ?, shift_id = ? WHERE id = ?"
+    ).run(method, now, now, shiftId, orderId);
+  } else {
+    db.prepare(
+      "UPDATE orders SET status = 'paid', payment_method = ?, paid_at = ?, updated_at = ? WHERE id = ?"
+    ).run(method, now, now, orderId);
+  }
   const order = getOrder(orderId)!;
   enqueueOutbox("order.paid", order);
   return order;

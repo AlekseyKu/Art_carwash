@@ -341,6 +341,48 @@ button:disabled {
   padding: 1.5rem;
 }
 
+.modal-wide {
+  width: min(560px, 100%);
+  max-height: min(88vh, 760px);
+  overflow: auto;
+}
+
+.shift-order-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.shift-order-item {
+  border: 1px solid color-mix(in srgb, var(--brand-silver) 55%, transparent);
+  border-radius: 10px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
+}
+
+.shift-order-toggle {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  text-align: left;
+  padding: 0.7rem 0.85rem;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.shift-order-details {
+  padding: 0 0.85rem 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--brand-silver) 40%, transparent);
+}
+
 .stack {
   display: flex;
   flex-direction: column;

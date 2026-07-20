@@ -1,13 +1,17 @@
-import { BRAND_NAME, formatRub } from "@art/shared";
+import { BRAND_NAME, formatRub, type ShiftReport } from "@art/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   api,
   getWasherToken,
+  isUnauthorized,
   setWasherToken,
   type OrderDto,
+  type ShiftDto,
+  type ShiftReportDto,
 } from "../api";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
+import { ShiftReportView } from "../components/ShiftReportView";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
 
@@ -36,13 +40,58 @@ export function PosPage() {
   const [recentKey, setRecentKey] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
   const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
+  const [shift, setShift] = useState<ShiftDto | null>(null);
+  const [shiftBusy, setShiftBusy] = useState(false);
+  const [openShiftPrompt, setOpenShiftPrompt] = useState(false);
+  const [rolloverPrompt, setRolloverPrompt] = useState(false);
+  const [closeReport, setCloseReport] = useState<ShiftReportDto | null>(null);
+
+  function forceLogout(message?: string) {
+    setWasherToken(null);
+    setToken(null);
+    setOrder(null);
+    setCatalog(null);
+    setQty({});
+    setDiscountId(null);
+    setPayOpen(false);
+    setPendingPay(null);
+    setRecentOpen(false);
+    setWasherName("");
+    setShift(null);
+    setOpenShiftPrompt(false);
+    setRolloverPrompt(false);
+    setCloseReport(null);
+    if (message) setError(message);
+  }
+
+  async function refreshShift(t = token) {
+    if (!t) return;
+    const st = await api.shiftCurrent(t);
+    setShift(st.shift);
+    if (st.needsRollover) setRolloverPrompt(true);
+    return st;
+  }
+
+  useEffect(() => {
+    const onUnauthorized = (ev: Event) => {
+      const detail = (ev as CustomEvent).detail;
+      if (detail === "washer" || detail == null) {
+        forceLogout("Сессия недействительна — введите PIN снова");
+      }
+    };
+    window.addEventListener("art:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("art:unauthorized", onUnauthorized);
+  }, []);
 
   useEffect(() => {
     const tick = () => {
-      api.status().then((s) => {
-        setOnline(s.online);
-        setPendingSync(s.pendingSync);
-      }).catch(() => setOnline(false));
+      api
+        .status()
+        .then((s) => {
+          setOnline(s.online);
+          setPendingSync(s.pendingSync);
+        })
+        .catch(() => setOnline(false));
     };
     tick();
     const id = setInterval(tick, 8000);
@@ -54,17 +103,23 @@ export function PosPage() {
     api
       .catalog()
       .then((c) => {
-        setCatalog(c);
-        setCatalogTabId((prev) => prev ?? c.tabs[0]?.id ?? null);
+        const tabs = c.tabs ?? [];
+        setCatalog({ ...c, tabs, services: c.services ?? [], discounts: c.discounts ?? [] });
+        setCatalogTabId((prev) => prev ?? tabs[0]?.id ?? null);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
   }, [token]);
 
   const catalogItems = useMemo(() => {
     if (!catalog) return [];
-    const tabId = catalogTabId ?? catalog.tabs[0]?.id;
-    if (!tabId) return catalog.services;
-    return catalog.services.filter((s) => s.tabId === tabId);
+    const tabs = catalog.tabs ?? [];
+    const services = catalog.services ?? [];
+    const tabId = catalogTabId ?? tabs[0]?.id;
+    if (!tabId) return services;
+    return services.filter((s) => s.tabId === tabId);
   }, [catalog, catalogTabId]);
 
   useEffect(() => {
@@ -78,7 +133,13 @@ export function PosPage() {
         setQty(map);
         setDiscountId(o.discountId);
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
+    refreshShift(token).catch((e) => {
+      if (isUnauthorized(e)) forceLogout(e.message);
+    });
   }, [token]);
 
   const subtotal = useMemo(() => {
@@ -117,9 +178,75 @@ export function PosPage() {
 
   async function logout() {
     if (token) await api.logout(token).catch(() => undefined);
-    setWasherToken(null);
-    setToken(null);
-    setOrder(null);
+    forceLogout();
+    setError("");
+  }
+
+  async function confirmOpenShiftAndPay() {
+    if (!token) return;
+    setShiftBusy(true);
+    setError("");
+    try {
+      const res = await api.shiftOpen(token);
+      setShift(res.shift);
+      setOpenShiftPrompt(false);
+      setPendingPay(null);
+      setPayOpen(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось открыть смену");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function confirmRollover() {
+    if (!token) return;
+    setShiftBusy(true);
+    setError("");
+    try {
+      const res = await api.shiftRollover(token);
+      setShift(res.shift);
+      setRolloverPrompt(false);
+      if (res.closedReport) setCloseReport(res.closedReport);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сменить смену");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function handleCloseShift() {
+    if (!token || !shift) return;
+    if (!window.confirm("Закрыть текущую смену и показать отчёт?")) return;
+    setShiftBusy(true);
+    setError("");
+    try {
+      const report = await api.shiftClose(token);
+      setShift(null);
+      setCloseReport(report);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось закрыть смену");
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function onPayClick() {
+    setError("");
+    if (!token) return;
+    try {
+      const st = await refreshShift(token);
+      if (st?.needsRollover) return;
+      if (!st?.shift) {
+        setOpenShiftPrompt(true);
+        return;
+      }
+      setPendingPay(null);
+      setPayOpen(true);
+    } catch (e) {
+      if (isUnauthorized(e)) forceLogout(e instanceof Error ? e.message : undefined);
+      else setError(e instanceof Error ? e.message : "Ошибка смены");
+    }
   }
 
   async function startPay(method: "cash" | "card" | "sbp", emulate?: "success" | "cancel") {
@@ -239,6 +366,8 @@ export function PosPage() {
           <div className="brand">{BRAND_NAME}</div>
           <div className="muted" style={{ fontSize: "0.85rem" }}>
             {washerName || "Мойщик"} · заказ #{order?.number ?? "—"}
+            {" · "}
+            {shift ? "смена открыта" : "смена не открыта"}
           </div>
         </div>
         <div className="row" style={{ alignItems: "center" }}>
@@ -246,7 +375,21 @@ export function PosPage() {
             {online ? "Сеть OK" : "Офлайн"}
             {pendingSync > 0 ? ` · sync ${pendingSync}` : ""}
           </span>
-          <Link to="/admin" className="btn-ghost" style={{ textDecoration: "none", display: "grid", placeItems: "center" }}>
+          {shift && (
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={shiftBusy}
+              onClick={() => void handleCloseShift()}
+            >
+              Закрыть смену
+            </button>
+          )}
+          <Link
+            to="/admin"
+            className="btn-ghost"
+            style={{ textDecoration: "none", display: "grid", placeItems: "center" }}
+          >
             Админ
           </Link>
           <button type="button" className="btn-ghost" onClick={() => void logout()}>
@@ -293,9 +436,7 @@ export function PosPage() {
                   type="button"
                   role="tab"
                   aria-selected={(catalogTabId ?? catalog?.tabs[0]?.id) === t.id}
-                  className={
-                    (catalogTabId ?? catalog?.tabs[0]?.id) === t.id ? "active" : ""
-                  }
+                  className={(catalogTabId ?? catalog?.tabs[0]?.id) === t.id ? "active" : ""}
                   onClick={() => setCatalogTabId(t.id)}
                 >
                   {t.name}
@@ -359,11 +500,8 @@ export function PosPage() {
               type="button"
               className="btn-primary"
               style={{ width: "100%", marginTop: "1.25rem" }}
-              disabled={!order?.items?.length}
-              onClick={() => {
-                setPendingPay(null);
-                setPayOpen(true);
-              }}
+              disabled={!order?.items?.length || rolloverPrompt}
+              onClick={() => void onPayClick()}
             >
               Оплата
             </button>
@@ -404,15 +542,72 @@ export function PosPage() {
         </div>
       )}
 
+      {rolloverPrompt && (
+        <div className="modal-backdrop">
+          <div className="modal stack">
+            <h2 className="h2">Смена за прошлый день</h2>
+            <p style={{ margin: 0 }}>
+              Вчерашняя смена не была закрыта. Она будет закрыта, и откроется новая смена на сегодня.
+              Работа кассы не блокируется после подтверждения.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={shiftBusy}
+              onClick={() => void confirmRollover()}
+            >
+              Понятно, продолжить
+            </button>
+          </div>
+        </div>
+      )}
+
+      {openShiftPrompt && (
+        <div className="modal-backdrop">
+          <div className="modal stack">
+            <h2 className="h2">Открытие смены</h2>
+            <p style={{ margin: 0 }}>
+              Смена ещё не открыта. При продолжении будет открыта новая смена, затем можно принять
+              оплату.
+            </p>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={shiftBusy}
+              onClick={() => void confirmOpenShiftAndPay()}
+            >
+              Открыть смену и оплатить
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              disabled={shiftBusy}
+              onClick={() => setOpenShiftPrompt(false)}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
+
+      {closeReport && (
+        <div className="modal-backdrop">
+          <div className="modal modal-wide stack">
+            <ShiftReportView report={closeReport as ShiftReport} title="Отчёт по смене" />
+            <button type="button" className="btn-primary" onClick={() => setCloseReport(null)}>
+              Готово
+            </button>
+          </div>
+        </div>
+      )}
+
       {payOpen && (
         <div className="modal-backdrop">
           <div className="modal stack">
             <h2 className="h2">Способ оплаты</h2>
             <p className="muted">К оплате {formatRub(order?.totalKopecks ?? 0)}</p>
             {!online && (
-              <p style={{ color: "var(--warning)", margin: 0 }}>
-                Нет сети — СБП недоступен
-              </p>
+              <p style={{ color: "var(--warning)", margin: 0 }}>Нет сети — СБП недоступен</p>
             )}
 
             {pendingPay ? (

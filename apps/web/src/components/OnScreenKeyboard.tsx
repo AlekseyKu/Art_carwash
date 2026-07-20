@@ -30,7 +30,15 @@ const KbContext = createContext<KbApi | null>(null);
 
 export function useTouchKeyboard() {
   const ctx = useContext(KbContext);
-  if (!ctx) throw new Error("useTouchKeyboard вне TouchKeyboardProvider");
+  if (!ctx) {
+    // Не роняем весь экран: no-op клавиатура
+    return {
+      open: () => {
+        console.warn("useTouchKeyboard: нет TouchKeyboardProvider");
+      },
+      close: () => undefined,
+    };
+  }
   return ctx;
 }
 

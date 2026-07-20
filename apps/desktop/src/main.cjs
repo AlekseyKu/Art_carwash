@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
-const { createUpdater } = require("./updater.cjs");
+const { createUpdater, resolveAppPaths } = require("./updater.cjs");
 
 const PORT = Number(process.env.ART_PORT || 3001);
 const CTRL_PORT = Number(process.env.ART_DESKTOP_CTRL_PORT || 3921);
@@ -30,7 +30,11 @@ function resourcesRoot() {
 }
 
 function versionPath() {
-  return path.join(resourcesRoot(), "version.json");
+  return resolveAppPaths(resourcesRoot()).versionPath;
+}
+
+function appPaths() {
+  return resolveAppPaths(resourcesRoot());
 }
 
 function candidateNodeBins() {
@@ -86,10 +90,11 @@ function resolveNodeBinary() {
 }
 
 function resolveApiEntry() {
-  const root = resourcesRoot();
+  const { apiDir } = appPaths();
   const candidates = [
-    path.join(root, "api", "dist", "index.js"),
-    path.join(root, "api", "src", "index.ts"),
+    path.join(apiDir, "dist", "index.js"),
+    path.join(apiDir, "index.js"),
+    path.join(apiDir, "src", "index.ts"),
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
@@ -98,11 +103,44 @@ function resolveApiEntry() {
 }
 
 function resolveWebDist() {
-  const packed = path.join(resourcesRoot(), "web");
-  if (fs.existsSync(path.join(packed, "index.html"))) return packed;
+  const { webDir } = appPaths();
+  if (fs.existsSync(path.join(webDir, "index.html"))) return webDir;
   const mono = path.join(__dirname, "..", "..", "web", "dist");
   if (fs.existsSync(path.join(mono, "index.html"))) return mono;
   return "";
+}
+
+/** Portable + Windows: app.relaunch() часто не поднимает процесс — spawn detached надёжнее. */
+function scheduleRelaunch() {
+  try {
+    const { updateLogPath } = require("./updater.cjs");
+    const logLine = (s) => {
+      try {
+        fs.appendFileSync(updateLogPath(), `${new Date().toISOString()} ${s}\n`, "utf8");
+      } catch {
+        /* ignore */
+      }
+    };
+    logLine(`relaunch execPath=${process.execPath}`);
+    const child = spawn(process.execPath, process.argv.slice(1), {
+      detached: true,
+      stdio: "ignore",
+      cwd: path.dirname(process.execPath),
+      env: process.env,
+      windowsHide: false,
+    });
+    child.unref();
+    logLine(`relaunch spawned pid=${child.pid}`);
+  } catch (e) {
+    try {
+      app.relaunch();
+    } catch {
+      /* ignore */
+    }
+  }
+  setTimeout(() => {
+    app.exit(0);
+  }, 400);
 }
 
 function waitForHealth(timeoutMs = 45000) {
@@ -259,6 +297,7 @@ function startControlServer() {
     try {
       const url = new URL(req.url || "/", `http://127.0.0.1:${CTRL_PORT}`);
       if (req.method === "GET" && url.pathname === "/status") {
+        const paths = updater.resolvePaths();
         send(200, {
           ok: true,
           desktop: true,
@@ -266,6 +305,10 @@ function startControlServer() {
           currentVersion: updater.currentVersion(),
           repo: process.env.ART_UPDATE_REPO || "AlekseyKu/Art_carwash",
           hasGithubToken: updater.hasToken(),
+          runtimeSource: paths.source,
+          runtimeDir: paths.runtimeDir,
+          updatesDir: path.join(app.getPath("userData"), "updates"),
+          logPath: path.join(app.getPath("userData"), "update.log"),
         });
         return;
       }
@@ -299,14 +342,19 @@ function startControlServer() {
         }
         updating = true;
         try {
+          // 1) Скачиваем при живом API (файлы runtime ещё не трогаем)
+          const prepared = await updater.prepareUpdate();
+          if (!prepared.prepared) {
+            send(200, { ...prepared, applied: false, restart: false });
+            return;
+          }
+          // 2) Останавливаем API, чтобы снять блокировки файлов на Windows
           await stopApi();
-          const result = await updater.applyUpdate();
+          const result = updater.commitPrepared(prepared);
           send(200, result);
           if (result.restart) {
-            setTimeout(() => {
-              app.relaunch();
-              app.exit(0);
-            }, 500);
+            // Ответ уже ушёл клиенту — поднимаем новый процесс и выходим
+            setTimeout(() => scheduleRelaunch(), 600);
           } else if (nodeBinCached) {
             startApi(nodeBinCached);
           }
@@ -369,6 +417,16 @@ function createWindow() {
 async function boot() {
   try {
     await startControlServer();
+    const paths = appPaths();
+    try {
+      fs.appendFileSync(
+        path.join(app.getPath("userData"), "update.log"),
+        `${new Date().toISOString()} boot source=${paths.source} web=${paths.webDir} ver=${versionPath()}\n`,
+        "utf8"
+      );
+    } catch {
+      /* ignore */
+    }
     const resolved = resolveNodeBinary();
     if (!resolved) {
       throw new Error(

@@ -1,15 +1,19 @@
-import { BRAND_NAME, formatRub } from "@art/shared";
+import { BRAND_NAME, formatRub, type ShiftReport } from "@art/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   adminApi,
   api,
   getAdminToken,
+  isUnauthorized,
   setAdminToken,
   type CatalogItemDto,
   type CatalogTabDto,
+  type ShiftDto,
+  type ShiftReportDto,
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
+import { ShiftReportView } from "../components/ShiftReportView";
 
 type FixedTab =
   | "discounts"
@@ -41,6 +45,9 @@ export function AdminPage() {
     notes: "",
   });
   const [period, setPeriod] = useState<"day" | "month">("day");
+  const [analyticsMode, setAnalyticsMode] = useState<"period" | "shifts">("period");
+  const [shiftList, setShiftList] = useState<ShiftDto[]>([]);
+  const [selectedShiftReport, setSelectedShiftReport] = useState<ShiftReportDto | null>(null);
   const [analytics, setAnalytics] = useState<{
     totalKopecks: number;
     orderCount: number;
@@ -66,6 +73,10 @@ export function AdminPage() {
     releaseUrl?: string | null;
     repo?: string;
     hasGithubToken?: boolean;
+    runtimeSource?: string;
+    runtimeDir?: string;
+    updatesDir?: string;
+    logPath?: string;
   } | null>(null);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [githubTokenInput, setGithubTokenInput] = useState("");
@@ -122,75 +133,81 @@ export function AdminPage() {
       adminApi.terminal(token),
       adminApi.syncSettings(token),
     ]);
-    setCatalogTabs(tabs);
-    setServices(s);
-    setDiscounts(d);
-    setWashers(w);
+    setCatalogTabs(Array.isArray(tabs) ? tabs : []);
+    setServices(Array.isArray(s) ? s : []);
+    setDiscounts(Array.isArray(d) ? d : []);
+    setWashers(Array.isArray(w) ? w : []);
     setTerminal({
-      adapter: String(t.adapter ?? "emulator"),
-      host: String(t.host ?? ""),
-      port: String(t.port ?? 8080),
-      comPort: String(t.comPort ?? ""),
-      notes: String(t.notes ?? ""),
+      adapter: String(t?.adapter ?? "emulator"),
+      host: String(t?.host ?? ""),
+      port: String(t?.port ?? 8080),
+      comPort: String(t?.comPort ?? ""),
+      notes: String(t?.notes ?? ""),
     });
-    if (sync.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
+    if (sync?.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
 
     if (tab.startsWith("catalog:")) {
       const key = tab.slice("catalog:".length);
-      const stillThere = tabs.some((ct) => ct.slug === key || ct.id === key);
-      if (!stillThere && tabs[0]) setTab(`catalog:${tabs[0].slug}`);
+      const stillThere = (tabs ?? []).some((ct) => ct.slug === key || ct.id === key);
+      if (!stillThere && tabs?.[0]) setTab(`catalog:${tabs[0].slug}`);
     }
   }
 
+  function forceLogout(message?: string) {
+    setAdminToken(null);
+    setToken(null);
+    if (message) setError(message);
+  }
+
+  useEffect(() => {
+    const onUnauthorized = (ev: Event) => {
+      if ((ev as CustomEvent).detail === "admin") {
+        forceLogout("Сессия недействительна — введите мастер-код снова");
+      }
+    };
+    window.addEventListener("art:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("art:unauthorized", onUnauthorized);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
-    refresh().catch((e) => setError(e.message));
+    refresh().catch((e) => {
+      if (isUnauthorized(e)) forceLogout(e.message);
+      else setError(e.message);
+    });
   }, [token]);
 
   useEffect(() => {
     if (!token || tab !== "analytics") return;
-    adminApi.analytics(token, period).then(setAnalytics).catch((e) => setError(e.message));
-  }, [token, tab, period]);
+    if (analyticsMode === "period") {
+      adminApi.analytics(token, period).then(setAnalytics).catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
+      return;
+    }
+    setSelectedShiftReport(null);
+    adminApi
+      .shifts(token)
+      .then((r) => setShiftList(r.shifts ?? []))
+      .catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
+  }, [token, tab, period, analyticsMode]);
 
-  if (!token) {
-    return (
-      <div className="app-shell">
-        <header className="topbar">
-          <div className="brand">{BRAND_NAME}</div>
-          <Link to="/">Касса</Link>
-        </header>
-        <main className="content" style={{ display: "grid", placeItems: "center" }}>
-          <div className="panel" style={{ width: "min(420px, 100%)", textAlign: "center" }}>
-            <h1 className="h1" style={{ fontSize: "1.5rem" }}>
-              Админ
-            </h1>
-            <p className="muted">Введите мастер-код</p>
-            <div className="pin-dots">
-              {Array.from({ length: Math.max(4, code.length || 4) }).map((_, i) => (
-                <span key={i} className={i < code.length ? "filled" : ""} />
-              ))}
-            </div>
-            {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-            <div className="pin-pad">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => {
-                    if (k === "C") setCode("");
-                    else if (k === "OK") void login();
-                    else if (code.length < 8) setCode((c) => c + k);
-                  }}
-                >
-                  {k}
-                </button>
-              ))}
-            </div>
-          </div>
-        </main>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!token || tab !== "updates") return;
+    setUpdateBusy(true);
+    adminApi
+      .updatesStatus(token)
+      .then((s) => setUpdateInfo(s))
+      .catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      })
+      .finally(() => setUpdateBusy(false));
+  }, [token, tab]);
 
   const navTabs: { id: Tab; label: string }[] = [
     ...catalogTabs
@@ -206,15 +223,47 @@ export function AdminPage() {
     { id: "security", label: "Безопасность" },
   ];
 
-  useEffect(() => {
-    if (!token || tab !== "updates") return;
-    setUpdateBusy(true);
-    adminApi
-      .updatesStatus(token)
-      .then((s) => setUpdateInfo(s))
-      .catch((e) => setError(e.message))
-      .finally(() => setUpdateBusy(false));
-  }, [token, tab]);
+  if (!token) {
+    return (
+      <TouchKeyboardProvider>
+        <div className="app-shell">
+          <header className="topbar">
+            <div className="brand">{BRAND_NAME}</div>
+            <Link to="/">Касса</Link>
+          </header>
+          <main className="content" style={{ display: "grid", placeItems: "center" }}>
+            <div className="panel" style={{ width: "min(420px, 100%)", textAlign: "center" }}>
+              <h1 className="h1" style={{ fontSize: "1.5rem" }}>
+                Админ
+              </h1>
+              <p className="muted">Введите мастер-код</p>
+              <div className="pin-dots">
+                {Array.from({ length: Math.max(4, code.length || 4) }).map((_, i) => (
+                  <span key={i} className={i < code.length ? "filled" : ""} />
+                ))}
+              </div>
+              {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+              <div className="pin-pad">
+                {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "OK"].map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => {
+                      if (k === "C") setCode("");
+                      else if (k === "OK") void login();
+                      else if (code.length < 8) setCode((c) => c + k);
+                    }}
+                  >
+                    {k}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </main>
+        </div>
+      </TouchKeyboardProvider>
+    );
+  }
 
   return (
     <TouchKeyboardProvider>
@@ -721,49 +770,129 @@ export function AdminPage() {
               </h2>
               <button
                 type="button"
-                className={period === "day" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setPeriod("day")}
+                className={analyticsMode === "period" ? "btn-primary" : "btn-secondary"}
+                onClick={() => setAnalyticsMode("period")}
               >
-                День
+                Период
               </button>
               <button
                 type="button"
-                className={period === "month" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setPeriod("month")}
+                className={analyticsMode === "shifts" ? "btn-primary" : "btn-secondary"}
+                onClick={() => setAnalyticsMode("shifts")}
               >
-                Месяц
+                Смены
               </button>
             </div>
-            {analytics && (
+
+            {analyticsMode === "period" && (
               <>
-                <p>
-                  Выручка <strong>{formatRub(analytics.totalKopecks)}</strong> · заказов{" "}
-                  {analytics.orderCount}
+                <div className="row">
+                  <button
+                    type="button"
+                    className={period === "day" ? "btn-primary" : "btn-secondary"}
+                    onClick={() => setPeriod("day")}
+                  >
+                    День
+                  </button>
+                  <button
+                    type="button"
+                    className={period === "month" ? "btn-primary" : "btn-secondary"}
+                    onClick={() => setPeriod("month")}
+                  >
+                    Месяц
+                  </button>
+                </div>
+                {analytics && (
+                  <>
+                    <p>
+                      Выручка <strong>{formatRub(analytics.totalKopecks)}</strong> · заказов{" "}
+                      {analytics.orderCount}
+                    </p>
+                    <h3 className="h2">По услугам</h3>
+                    <ul>
+                      {analytics.byService.map((b) => (
+                        <li key={b.label}>
+                          {b.label}: {formatRub(b.totalKopecks)} ({b.count})
+                        </li>
+                      ))}
+                    </ul>
+                    <h3 className="h2">По постам</h3>
+                    <ul>
+                      {analytics.byPost.map((b) => (
+                        <li key={b.label}>
+                          {b.label}: {formatRub(b.totalKopecks)} ({b.count})
+                        </li>
+                      ))}
+                    </ul>
+                    <h3 className="h2">По оплате</h3>
+                    <ul>
+                      {analytics.byPaymentMethod.map((b) => (
+                        <li key={b.label}>
+                          {b.label}: {formatRub(b.totalKopecks)} ({b.count})
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            )}
+
+            {analyticsMode === "shifts" && (
+              <>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Краткие отчёты по кассовым сменам. Нажмите смену, чтобы раскрыть чеки и оплаты.
                 </p>
-                <h3 className="h2">По услугам</h3>
-                <ul>
-                  {analytics.byService.map((b) => (
-                    <li key={b.label}>
-                      {b.label}: {formatRub(b.totalKopecks)} ({b.count})
-                    </li>
-                  ))}
-                </ul>
-                <h3 className="h2">По постам</h3>
-                <ul>
-                  {analytics.byPost.map((b) => (
-                    <li key={b.label}>
-                      {b.label}: {formatRub(b.totalKopecks)} ({b.count})
-                    </li>
-                  ))}
-                </ul>
-                <h3 className="h2">По оплате</h3>
-                <ul>
-                  {analytics.byPaymentMethod.map((b) => (
-                    <li key={b.label}>
-                      {b.label}: {formatRub(b.totalKopecks)} ({b.count})
-                    </li>
-                  ))}
-                </ul>
+                {shiftList.length === 0 ? (
+                  <p className="muted">Смен пока нет</p>
+                ) : (
+                  <ul className="shift-order-list">
+                    {shiftList.map((s) => {
+                      const active = selectedShiftReport?.shift.id === s.id;
+                      const opened = new Intl.DateTimeFormat("ru-RU", {
+                        timeZone: "Europe/Moscow",
+                        day: "2-digit",
+                        month: "2-digit",
+                        year: "numeric",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }).format(new Date(s.openedAt));
+                      return (
+                        <li key={s.id} className="shift-order-item">
+                          <button
+                            type="button"
+                            className="shift-order-toggle"
+                            onClick={() => {
+                              if (!token) return;
+                              if (active) {
+                                setSelectedShiftReport(null);
+                                return;
+                              }
+                              adminApi
+                                .shiftReport(token, s.id)
+                                .then(setSelectedShiftReport)
+                                .catch((e) => setError(e.message));
+                            }}
+                          >
+                            <span>
+                              {opened}
+                              {" · "}
+                              {s.status === "open" ? "открыта" : "закрыта"}
+                              {s.openedByName ? ` · ${s.openedByName}` : ""}
+                            </span>
+                            <span>
+                              {formatRub(s.totalKopecks ?? 0)} · {s.orderCount ?? 0} чек.
+                            </span>
+                          </button>
+                          {active && selectedShiftReport && (
+                            <div className="shift-order-details">
+                              <ShiftReportView report={selectedShiftReport as ShiftReport} />
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
               </>
             )}
           </div>
@@ -780,7 +909,21 @@ export function AdminPage() {
             <p>
               Текущая версия:{" "}
               <strong>{updateInfo?.currentVersion ?? updateInfo?.message ?? "—"}</strong>
+              {updateInfo?.runtimeSource === "runtime" ? " (из AppData)" : null}
             </p>
+            {(updateInfo?.runtimeDir || updateInfo?.updatesDir) && (
+              <p className="muted" style={{ fontSize: "0.85rem", margin: 0 }}>
+                Установка: <code>{updateInfo.runtimeDir ?? "—"}</code>
+                <br />
+                Загрузки: <code>{updateInfo.updatesDir ?? "—"}</code>
+                {updateInfo.logPath ? (
+                  <>
+                    <br />
+                    Лог: <code>{updateInfo.logPath}</code>
+                  </>
+                ) : null}
+              </p>
+            )}
             <p className="muted" style={{ margin: 0 }}>
               GitHub token:{" "}
               <strong>

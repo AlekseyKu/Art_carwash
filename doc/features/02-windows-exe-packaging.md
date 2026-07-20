@@ -50,6 +50,7 @@ Electron (kiosk window)
 
 - Cloud-api в exe не входит (VPS / отдельно).
 - `sdk_bridge` по-прежнему отдельный процесс при необходимости.
+- После обновления UI/API берутся из `%APPDATA%/автомойка-арт/runtime` (если есть), иначе из `resources` внутри portable.
 
 ## Обновления из GitHub (админка)
 
@@ -70,8 +71,14 @@ pnpm release:pos
      (fine-grained или classic, право **Contents: Read** на `AlekseyKu/Art_carwash`)  
      в **Админ → Обновления**.  
    - Затем **Проверить → Обновить**.  
-   Приложение скачает zip, заменит `resources/web` и `resources/api`, перезапустится.  
-   SQLite в `%APPDATA%` не трогается. Token хранится в `%APPDATA%\\…\\update-config.json`.
+   Приложение скачает `art-pos-update.zip` во временную папку, поставит `web`+`api` в  
+   `%APPDATA%/автомойка-арт/runtime` и перезапустится (detached spawn).  
+   Portable `.exe` при каждом запуске пересобирает свой `resources` — поэтому обновление  
+   **не пишется внутрь exe**, а лежит в AppData и подхватывается при старте.  
+   SQLite в `%APPDATA%/автомойка-арт/data` не трогается.  
+   Token: `%APPDATA%/автомойка-арт/update-config.json`.  
+   Лог обновлений: `%APPDATA%/автомойка-арт/update.log`.  
+   Загрузки/бэкапы: `%APPDATA%/автомойка-арт/updates`.
 
 ## Код
 
@@ -86,7 +93,7 @@ pnpm release:pos
 
 - [x] Двойной клик / скрипт → касса на весь экран, API отвечает
 - [x] Офлайн-оплата наличными (local SQLite)
-- [ ] Обновление без потери БД (документировать копирование userData)
+- [x] Обновление без потери БД (runtime в AppData, data/ не трогается)
 - [ ] Опционально: встроить Node в portable (не требовать системный Node)
 - [ ] Код-сайнинг перед продом
 

@@ -2,16 +2,16 @@ import bcrypt from "bcryptjs";
 import { nanoid } from "nanoid";
 import { db, getSetting, setSetting } from "./db.js";
 
-const SESSION_HOURS = 12;
+/** Сессия без авто-истечения — действует до «Смена PIN» / Выйти. */
+const NEVER_EXPIRES = "9999-12-31T23:59:59.000Z";
 
 export function createSession(kind: "washer" | "admin", washerId?: string) {
   const token = nanoid(32);
-  const now = new Date();
-  const expires = new Date(now.getTime() + SESSION_HOURS * 3600_000);
+  const now = new Date().toISOString();
   db.prepare(
     "INSERT INTO sessions (token, kind, washer_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)"
-  ).run(token, kind, washerId ?? null, now.toISOString(), expires.toISOString());
-  return { token, expiresAt: expires.toISOString() };
+  ).run(token, kind, washerId ?? null, now, NEVER_EXPIRES);
+  return { token, expiresAt: NEVER_EXPIRES };
 }
 
 export function getSession(token: string | undefined) {
@@ -26,12 +26,7 @@ export function getSession(token: string | undefined) {
         expires_at: string;
       }
     | undefined;
-  if (!row) return null;
-  if (new Date(row.expires_at) < new Date()) {
-    db.prepare("DELETE FROM sessions WHERE token = ?").run(token);
-    return null;
-  }
-  return row;
+  return row ?? null;
 }
 
 export function deleteSession(token: string) {

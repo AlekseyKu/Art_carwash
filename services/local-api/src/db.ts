@@ -127,11 +127,25 @@ export function migrate() {
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS shifts (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      opened_at TEXT NOT NULL,
+      closed_at TEXT,
+      opened_by_washer_id TEXT,
+      closed_by_washer_id TEXT,
+      note TEXT
+    );
   `);
 
   // Существующие БД без tab_id
   if (!tableColumns("services").has("tab_id")) {
     db.exec("ALTER TABLE services ADD COLUMN tab_id TEXT");
+  }
+
+  if (!tableColumns("orders").has("shift_id")) {
+    db.exec("ALTER TABLE orders ADD COLUMN shift_id TEXT");
   }
 
   ensureDefaultCatalogTabs();

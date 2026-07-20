@@ -24,6 +24,38 @@ export function setOwnerToken(t: string | null) {
   else localStorage.removeItem(OWNER_KEY);
 }
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+export function isUnauthorized(err: unknown): boolean {
+  return (
+    (err instanceof ApiError && err.status === 401) ||
+    (err instanceof Error && /unauthorized|сессия истекла/i.test(err.message))
+  );
+}
+
+function clearStaleSession(url: string) {
+  if (url.includes("/api/auth/washer") || url.includes("/api/auth/admin")) return;
+  if (url.includes("/cloud-api") || url.includes("/owner/")) {
+    setOwnerToken(null);
+    window.dispatchEvent(new CustomEvent("art:unauthorized", { detail: "owner" }));
+    return;
+  }
+  if (url.includes("/api/admin")) {
+    setAdminToken(null);
+    window.dispatchEvent(new CustomEvent("art:unauthorized", { detail: "admin" }));
+    return;
+  }
+  setWasherToken(null);
+  window.dispatchEvent(new CustomEvent("art:unauthorized", { detail: "washer" }));
+}
+
 async function request<T>(
   url: string,
   opts: RequestInit & { token?: string | null } = {}
@@ -31,9 +63,25 @@ async function request<T>(
   const headers = new Headers(opts.headers);
   headers.set("content-type", "application/json");
   if (opts.token) headers.set("authorization", `Bearer ${opts.token}`);
-  const res = await fetch(url, { ...opts, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...opts, headers });
+  } catch {
+    throw new ApiError("Нет связи с сервером кассы. Проверьте, что программа запущена.", 0);
+  }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error ?? res.statusText);
+  if (!res.ok) {
+    const msg =
+      (data as { error?: string }).error ||
+      (res.status === 502 || res.status === 503
+        ? "Сервис временно недоступен"
+        : res.statusText || `Ошибка ${res.status}`);
+    if (res.status === 401) {
+      clearStaleSession(url);
+      throw new ApiError("Сессия недействительна — войдите снова", 401);
+    }
+    throw new ApiError(msg, res.status);
+  }
   return data as T;
 }
 
@@ -122,6 +170,70 @@ export const api = {
       body: JSON.stringify({ clientId }),
       token,
     }),
+  shiftCurrent: (token: string) =>
+    request<{
+      shift: ShiftDto | null;
+      needsOpen: boolean;
+      needsRollover: boolean;
+      todayLabel: string;
+    }>("/api/shifts/current", { token }),
+  shiftOpen: (token: string) =>
+    request<{ shift: ShiftDto; created: boolean }>("/api/shifts/open", {
+      method: "POST",
+      token,
+      body: "{}",
+    }),
+  shiftRollover: (token: string) =>
+    request<{
+      closedReport: ShiftReportDto | null;
+      shift: ShiftDto;
+      created: boolean;
+    }>("/api/shifts/rollover", { method: "POST", token, body: "{}" }),
+  shiftClose: (token: string) =>
+    request<ShiftReportDto>("/api/shifts/close", { method: "POST", token, body: "{}" }),
+  shiftReport: (id: string, token: string) =>
+    request<ShiftReportDto>(`/api/shifts/${id}/report`, { token }),
+};
+
+export type ShiftDto = {
+  id: string;
+  status: "open" | "closed";
+  openedAt: string;
+  closedAt: string | null;
+  openedByWasherId: string | null;
+  closedByWasherId: string | null;
+  openedByName?: string | null;
+  closedByName?: string | null;
+  note?: string | null;
+  orderCount?: number;
+  totalKopecks?: number;
+};
+
+export type ShiftReportDto = {
+  shift: ShiftDto;
+  totalKopecks: number;
+  orderCount: number;
+  byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
+  orders: {
+    id: string;
+    number: number;
+    status: string;
+    paymentMethod: string | null;
+    subtotalKopecks: number;
+    discountKopecks: number;
+    totalKopecks: number;
+    paidAt: string | null;
+    createdAt: string;
+    washerId: string;
+    washerName: string | null;
+    plateNumber: string | null;
+    items: {
+      nameSnapshot: string;
+      priceKopecks: number;
+      qty: number;
+      lineTotalKopecks: number;
+    }[];
+  }[];
 };
 
 export type ClientDto = {
@@ -277,6 +389,18 @@ export const adminApi = {
       byPost: { label: string; totalKopecks: number; count: number }[];
       byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
     }>(`/api/admin/analytics?period=${period}`, { token }),
+  shifts: (token: string, limit = 40) =>
+    request<{
+      shifts: ShiftDto[];
+      current: {
+        shift: ShiftDto | null;
+        needsOpen: boolean;
+        needsRollover: boolean;
+        todayLabel: string;
+      };
+    }>(`/api/admin/shifts?limit=${limit}`, { token }),
+  shiftReport: (token: string, id: string) =>
+    request<ShiftReportDto>(`/api/admin/shifts/${id}`, { token }),
   changeMaster: (token: string, current: string, next: string) =>
     request<{ ok: boolean; error?: string }>("/api/admin/master-code", {
       method: "POST",
@@ -306,6 +430,10 @@ export const adminApi = {
       repo?: string;
       message?: string;
       hasGithubToken?: boolean;
+      runtimeSource?: string;
+      runtimeDir?: string;
+      updatesDir?: string;
+      logPath?: string;
     }>("/api/admin/updates/status", { token }),
   updatesCheck: (token: string) =>
     request<{
@@ -319,6 +447,10 @@ export const adminApi = {
       desktop?: boolean;
       hasGithubToken?: boolean;
       repo?: string;
+      runtimeSource?: string;
+      runtimeDir?: string;
+      updatesDir?: string;
+      logPath?: string;
     }>("/api/admin/updates/check", { method: "POST", token, body: "{}" }),
   updatesApply: (token: string) =>
     request<{
@@ -329,6 +461,8 @@ export const adminApi = {
       latestVersion?: string;
       message?: string;
       error?: string;
+      runtimeDir?: string;
+      logPath?: string;
     }>("/api/admin/updates/apply", { method: "POST", token, body: "{}" }),
   updatesSetGithubToken: (token: string, githubToken: string) =>
     request<{ ok?: boolean; hasGithubToken?: boolean; message?: string }>(

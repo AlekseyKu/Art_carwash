@@ -93,6 +93,53 @@ export interface AnalyticsReport {
   byPaymentMethod: AnalyticsBucket[];
 }
 
+export type ShiftStatus = "open" | "closed";
+
+export interface CashShift {
+  id: string;
+  status: ShiftStatus;
+  openedAt: string;
+  closedAt: string | null;
+  openedByWasherId: string | null;
+  closedByWasherId: string | null;
+  openedByName?: string | null;
+  closedByName?: string | null;
+  note?: string | null;
+  orderCount?: number;
+  totalKopecks?: number;
+}
+
+export interface ShiftOrderLine {
+  nameSnapshot: string;
+  priceKopecks: number;
+  qty: number;
+  lineTotalKopecks: number;
+}
+
+export interface ShiftOrderDetail {
+  id: string;
+  number: number;
+  status: string;
+  paymentMethod: PaymentMethod | null;
+  subtotalKopecks: number;
+  discountKopecks: number;
+  totalKopecks: number;
+  paidAt: string | null;
+  createdAt: string;
+  washerId: string;
+  washerName: string | null;
+  plateNumber: string | null;
+  items: ShiftOrderLine[];
+}
+
+export interface ShiftReport {
+  shift: CashShift;
+  totalKopecks: number;
+  orderCount: number;
+  byPaymentMethod: AnalyticsBucket[];
+  orders: ShiftOrderDetail[];
+}
+
 export function formatRub(kopecks: number): string {
   return new Intl.NumberFormat("ru-RU", {
     style: "currency",

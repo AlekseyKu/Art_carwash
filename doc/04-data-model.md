@@ -60,6 +60,17 @@
 - `created_at` TEXT
 - `paid_at` TEXT NULL
 - `updated_at` TEXT
+- `shift_id` TEXT NULL → `shifts.id`
+
+### shifts
+Кассовая смена (открытие/закрытие на POS).
+- `id` TEXT PK
+- `status` TEXT (`open` | `closed`)
+- `opened_at` TEXT
+- `closed_at` TEXT NULL
+- `opened_by_washer_id` TEXT NULL
+- `closed_by_washer_id` TEXT NULL
+- `note` TEXT NULL
 
 ### order_items
 - `id` TEXT PK

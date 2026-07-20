@@ -76,7 +76,7 @@ function requireOwner(req: { headers: { authorization?: string } }) {
   const row = db.prepare("SELECT * FROM sessions WHERE token = ?").get(token) as
     | { expires_at: string }
     | undefined;
-  if (!row || new Date(row.expires_at) < new Date()) {
+  if (!row) {
     throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
   }
 }
@@ -159,7 +159,7 @@ app.post<{ Body: { password: string } }>("/api/owner/login", async (req) => {
   for (const o of owners) {
     if (bcrypt.compareSync(req.body.password, o.password_hash)) {
       const token = nanoid(32);
-      const expires = new Date(Date.now() + 30 * 86400_000).toISOString();
+      const expires = "9999-12-31T23:59:59.000Z";
       db.prepare("INSERT INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)").run(
         token,
         new Date().toISOString(),

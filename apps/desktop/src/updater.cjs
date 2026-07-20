@@ -1,9 +1,12 @@
+"use strict";
+
 const { spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const https = require("node:https");
 const path = require("node:path");
+const { app } = require("electron");
 
 const DEFAULT_REPO = process.env.ART_UPDATE_REPO || "AlekseyKu/Art_carwash";
 const ASSET_NAME = "art-pos-update.zip";
@@ -116,11 +119,10 @@ function extractZip(zipPath, destDir) {
   fs.mkdirSync(destDir, { recursive: true });
   if (process.platform === "win32") {
     const ps = `Expand-Archive -LiteralPath '${zipPath.replace(/'/g, "''")}' -DestinationPath '${destDir.replace(/'/g, "''")}' -Force`;
-    const r = spawnSync(
-      "powershell.exe",
-      ["-NoProfile", "-Command", ps],
-      { encoding: "utf8", windowsHide: true }
-    );
+    const r = spawnSync("powershell.exe", ["-NoProfile", "-Command", ps], {
+      encoding: "utf8",
+      windowsHide: true,
+    });
     if (r.status !== 0) {
       throw new Error(r.stderr || r.stdout || "Expand-Archive failed");
     }
@@ -134,6 +136,54 @@ function sha256File(file) {
   const hash = crypto.createHash("sha256");
   hash.update(fs.readFileSync(file));
   return hash.digest("hex");
+}
+
+function runtimeRoot() {
+  return path.join(app.getPath("userData"), "runtime");
+}
+
+function updateLogPath() {
+  return path.join(app.getPath("userData"), "update.log");
+}
+
+function appendLog(line) {
+  try {
+    fs.appendFileSync(updateLogPath(), `${new Date().toISOString()} ${line}\n`, "utf8");
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Portable.exe при каждом холодном старте перезаписывает resources.
+ * Актуальные web/api храним в %APPDATA%/…/runtime и предпочитаем их при запуске.
+ */
+function resolveAppPaths(packagedResourcesDir) {
+  const rt = runtimeRoot();
+  const rtWeb = path.join(rt, "web");
+  const rtApi = path.join(rt, "api");
+  const rtOk =
+    fs.existsSync(path.join(rtWeb, "index.html")) &&
+    (fs.existsSync(path.join(rtApi, "dist", "index.js")) ||
+      fs.existsSync(path.join(rtApi, "index.js")));
+
+  if (rtOk) {
+    return {
+      webDir: rtWeb,
+      apiDir: rtApi,
+      versionPath: path.join(rt, "version.json"),
+      source: "runtime",
+      runtimeDir: rt,
+    };
+  }
+
+  return {
+    webDir: path.join(packagedResourcesDir, "web"),
+    apiDir: path.join(packagedResourcesDir, "api"),
+    versionPath: path.join(packagedResourcesDir, "version.json"),
+    source: "packaged",
+    runtimeDir: rt,
+  };
 }
 
 function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }) {
@@ -179,8 +229,17 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     return headers;
   }
 
+  function activeVersionPath() {
+    const paths = resolveAppPaths(resourcesDir);
+    if (paths.source === "runtime" && fs.existsSync(paths.versionPath)) {
+      return paths.versionPath;
+    }
+    if (fs.existsSync(currentVersionPath)) return currentVersionPath;
+    return paths.versionPath;
+  }
+
   function currentVersion() {
-    const fromFile = readJson(currentVersionPath, null);
+    const fromFile = readJson(activeVersionPath(), null);
     if (fromFile?.version) return String(fromFile.version);
     return "0.0.0";
   }
@@ -188,6 +247,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
   async function checkLatest() {
     const repo = process.env.ART_UPDATE_REPO || DEFAULT_REPO;
     const token = getToken();
+    const paths = resolveAppPaths(resourcesDir);
     if (!token) {
       return {
         ok: false,
@@ -196,6 +256,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         latestVersion: null,
         hasGithubToken: false,
         repo,
+        runtimeSource: paths.source,
+        runtimeDir: paths.runtimeDir,
+        updatesDir: tempDir,
+        logPath: updateLogPath(),
         message:
           "Репозиторий приватный: без GitHub token API отвечает 404. Создайте Personal Access Token (Contents: Read) и сохраните ниже.",
       };
@@ -215,6 +279,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         latestVersion: null,
         hasGithubToken: true,
         repo,
+        runtimeSource: paths.source,
+        runtimeDir: paths.runtimeDir,
+        updatesDir: tempDir,
+        logPath: updateLogPath(),
         message: msg,
       };
     }
@@ -226,6 +294,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         latestVersion: null,
         hasGithubToken: true,
         repo,
+        runtimeSource: paths.source,
+        runtimeDir: paths.runtimeDir,
+        updatesDir: tempDir,
+        logPath: updateLogPath(),
         message: "На GitHub пока нет Releases",
       };
     }
@@ -242,6 +314,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         latestVersion: null,
         hasGithubToken: true,
         repo,
+        runtimeSource: paths.source,
+        runtimeDir: paths.runtimeDir,
+        updatesDir: tempDir,
+        logPath: updateLogPath(),
         message: "Нет Release с файлом art-pos-update.zip",
       };
     }
@@ -261,6 +337,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         latestVersion: ver || null,
         hasGithubToken: true,
         repo,
+        runtimeSource: paths.source,
+        runtimeDir: paths.runtimeDir,
+        updatesDir: tempDir,
+        logPath: updateLogPath(),
         message: "В Release нет art-pos-update.zip",
         releaseUrl: release.html_url || null,
       };
@@ -268,6 +348,7 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     const current = currentVersion();
     const latest = ver || current;
     const updateAvailable = cmpSemver(current, latest) < 0;
+    appendLog(`check current=${current} latest=${latest} available=${updateAvailable}`);
     return {
       ok: true,
       updateAvailable,
@@ -277,34 +358,43 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       releaseNotes: release.body || "",
       releaseUrl: release.html_url || null,
       assetName: asset.name,
-      // для private repo нужен API asset URL + Accept: application/octet-stream
       assetUrl: asset.url || asset.browser_download_url,
       assetBrowserUrl: asset.browser_download_url || null,
       assetSize: asset.size,
       publishedAt: release.published_at || null,
       hasGithubToken: true,
       repo,
+      runtimeSource: paths.source,
+      runtimeDir: paths.runtimeDir,
+      updatesDir: tempDir,
+      logPath: updateLogPath(),
       message: updateAvailable
         ? `Доступна версия ${latest}`
         : `Уже последняя версия (${current})`,
     };
   }
 
-  async function applyUpdate() {
+  /**
+   * Скачивает zip и готовит staging (API может ещё работать).
+   */
+  async function prepareUpdate() {
     const info = await checkLatest();
     if (!info.updateAvailable) {
-      return { ok: Boolean(info.ok), applied: false, ...info };
+      return { ok: Boolean(info.ok), prepared: false, ...info };
     }
     fs.mkdirSync(tempDir, { recursive: true });
     const zipPath = path.join(tempDir, ASSET_NAME);
     const extractDir = path.join(tempDir, "extract");
+    const stagingDir = path.join(tempDir, `staging-${Date.now()}`);
     if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath);
     rimraf(extractDir);
 
+    appendLog(`download ${info.assetUrl}`);
     await downloadFile(info.assetUrl, zipPath, {
       ...githubHeaders(),
       Accept: "application/octet-stream",
     });
+    appendLog(`downloaded size=${fs.statSync(zipPath).size}`);
     extractZip(zipPath, extractDir);
 
     let root = extractDir;
@@ -325,71 +415,134 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
     }
     if (
       !fs.existsSync(path.join(apiSrc, "dist", "index.js")) &&
-      !fs.existsSync(path.join(apiSrc, "dist"))
+      !fs.existsSync(path.join(apiSrc, "index.js"))
     ) {
-      if (!fs.existsSync(path.join(apiSrc, "index.js"))) {
-        throw new Error("В архиве нет api/dist");
-      }
+      throw new Error("В архиве нет api/dist/index.js");
     }
 
-    const webDest = path.join(resourcesDir, "web");
-    const apiDest = path.join(resourcesDir, "api");
-    const webBak = path.join(resourcesDir, "web.bak");
-    const apiBak = path.join(resourcesDir, "api.bak");
+    rimraf(stagingDir);
+    fs.mkdirSync(stagingDir, { recursive: true });
+    copyDir(webSrc, path.join(stagingDir, "web"));
+    copyDir(apiSrc, path.join(stagingDir, "api"));
+    if (fs.existsSync(verSrc)) {
+      fs.copyFileSync(verSrc, path.join(stagingDir, "version.json"));
+    } else {
+      fs.writeFileSync(
+        path.join(stagingDir, "version.json"),
+        JSON.stringify(
+          {
+            version: info.latestVersion,
+            updatedAt: new Date().toISOString(),
+            sha256: sha256File(zipPath),
+          },
+          null,
+          2
+        )
+      );
+    }
 
-    rimraf(webBak);
-    rimraf(apiBak);
-    if (fs.existsSync(webDest)) fs.renameSync(webDest, webBak);
-    if (fs.existsSync(apiDest)) fs.renameSync(apiDest, apiBak);
+    appendLog(`staging ready ${stagingDir}`);
+    return {
+      ok: true,
+      prepared: true,
+      stagingDir,
+      zipPath,
+      extractDir,
+      latestVersion: info.latestVersion,
+      currentVersion: info.currentVersion,
+      hasGithubToken: true,
+    };
+  }
+
+  /**
+   * Ставит staging в %APPDATA%/…/runtime (вызывать после остановки API).
+   */
+  function commitPrepared(prepared) {
+    if (!prepared?.prepared || !prepared.stagingDir) {
+      throw new Error("Нет подготовленного обновления");
+    }
+    const rt = runtimeRoot();
+    const backup = path.join(tempDir, `runtime-backup-${Date.now()}`);
+
+    if (fs.existsSync(rt)) {
+      rimraf(backup);
+      fs.renameSync(rt, backup);
+      appendLog(`backed up runtime → ${backup}`);
+    }
 
     try {
-      copyDir(webSrc, webDest);
-      copyDir(apiSrc, apiDest);
-      if (fs.existsSync(verSrc)) {
-        fs.copyFileSync(verSrc, currentVersionPath);
-      } else {
-        fs.writeFileSync(
-          currentVersionPath,
-          JSON.stringify(
-            {
-              version: info.latestVersion,
-              updatedAt: new Date().toISOString(),
-              sha256: sha256File(zipPath),
-            },
-            null,
-            2
-          )
-        );
-      }
-      rimraf(webBak);
-      rimraf(apiBak);
+      fs.renameSync(prepared.stagingDir, rt);
     } catch (e) {
-      rimraf(webDest);
-      rimraf(apiDest);
-      if (fs.existsSync(webBak)) fs.renameSync(webBak, webDest);
-      if (fs.existsSync(apiBak)) fs.renameSync(apiBak, apiDest);
+      if (fs.existsSync(backup)) {
+        try {
+          if (fs.existsSync(rt)) rimraf(rt);
+          fs.renameSync(backup, rt);
+        } catch {
+          /* ignore */
+        }
+      }
       throw e;
     }
 
+    // Старый способ писал в resources portable — больше не трогаем.
+    // Чистим extract/zip и лишние бэкапы.
+    try {
+      if (prepared.extractDir) rimraf(prepared.extractDir);
+      if (prepared.zipPath && fs.existsSync(prepared.zipPath)) fs.unlinkSync(prepared.zipPath);
+      const backups = fs
+        .readdirSync(tempDir)
+        .filter((n) => n.startsWith("runtime-backup-"))
+        .map((n) => path.join(tempDir, n))
+        .sort();
+      while (backups.length > 1) {
+        const old = backups.shift();
+        if (old) rimraf(old);
+      }
+    } catch {
+      /* ignore */
+    }
+
+    appendLog(`installed ${prepared.latestVersion} → ${rt}`);
     return {
       ok: true,
       applied: true,
-      currentVersion: info.latestVersion,
-      latestVersion: info.latestVersion,
-      message: `Обновлено до ${info.latestVersion}. Перезапуск…`,
+      currentVersion: prepared.latestVersion,
+      latestVersion: prepared.latestVersion,
+      runtimeDir: rt,
+      logPath: updateLogPath(),
+      message: `Обновлено до ${prepared.latestVersion}. Перезапуск…`,
       restart: true,
       hasGithubToken: true,
     };
   }
 
+  async function applyUpdate() {
+    const prepared = await prepareUpdate();
+    if (!prepared.prepared) {
+      return { ok: Boolean(prepared.ok), applied: false, ...prepared };
+    }
+    return commitPrepared(prepared);
+  }
+
   return {
     currentVersion,
     checkLatest,
+    prepareUpdate,
+    commitPrepared,
     applyUpdate,
     getToken,
     setToken,
     hasToken: () => Boolean(getToken()),
+    resolvePaths: () => resolveAppPaths(resourcesDir),
   };
 }
 
-module.exports = { createUpdater, cmpSemver, ASSET_NAME, DEFAULT_REPO };
+module.exports = {
+  createUpdater,
+  cmpSemver,
+  ASSET_NAME,
+  DEFAULT_REPO,
+  resolveAppPaths,
+  runtimeRoot,
+  updateLogPath,
+};

@@ -1,7 +1,7 @@
 import { BRAND_NAME, formatRub } from "@art/shared";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getOwnerToken, ownerApi, setOwnerToken } from "../api";
+import { getOwnerToken, isUnauthorized, ownerApi, setOwnerToken } from "../api";
 
 export function ReportsPage() {
   const [token, setToken] = useState(getOwnerToken());
@@ -16,12 +16,32 @@ export function ReportsPage() {
     byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
   } | null>(null);
 
+  function forceLogout(message?: string) {
+    setOwnerToken(null);
+    setToken(null);
+    setData(null);
+    if (message) setError(message);
+  }
+
+  useEffect(() => {
+    const onUnauthorized = (ev: Event) => {
+      if ((ev as CustomEvent).detail === "owner") {
+        forceLogout("Сессия недействительна — войдите снова");
+      }
+    };
+    window.addEventListener("art:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("art:unauthorized", onUnauthorized);
+  }, []);
+
   useEffect(() => {
     if (!token) return;
     ownerApi
       .analytics(token, period)
       .then(setData)
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
   }, [token, period]);
 
   async function login() {

@@ -43,6 +43,15 @@ import {
 } from "./orders.js";
 import { isOnline, providers } from "./payments.js";
 import { flushOutbox, startSyncLoop } from "./sync.js";
+import {
+  buildShiftReport,
+  closeShift,
+  getShift,
+  getShiftStatus,
+  listShifts,
+  openShift,
+  rolloverShift,
+} from "./shifts.js";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
@@ -60,6 +69,11 @@ migrate();
 seedIfEmpty();
 ensureClientTables();
 seedDemoClient();
+
+// Старые сессии с лимитом 12ч — бессрочные (выход только вручную)
+db.prepare(
+  "UPDATE sessions SET expires_at = '9999-12-31T23:59:59.000Z' WHERE expires_at < '9999-01-01'"
+).run();
 
 function bearer(req: { headers: { authorization?: string } }) {
   const h = req.headers.authorization;
@@ -258,6 +272,32 @@ app.get<{ Querystring: { limit?: string } }>("/api/orders/recent", async (req) =
   requireWasher(req);
   const limit = Number(req.query.limit ?? 5) || 5;
   return { orders: listRecentOrders(limit) };
+});
+
+app.get("/api/shifts/current", async (req) => {
+  requireWasher(req);
+  return getShiftStatus();
+});
+
+app.post("/api/shifts/open", async (req) => {
+  const s = requireWasher(req);
+  return openShift(s.washer_id!);
+});
+
+/** Закрыть вчерашнюю смену и открыть новую (первый вход на следующий день). */
+app.post("/api/shifts/rollover", async (req) => {
+  const s = requireWasher(req);
+  return rolloverShift(s.washer_id!);
+});
+
+app.post("/api/shifts/close", async (req) => {
+  const s = requireWasher(req);
+  return closeShift(s.washer_id!);
+});
+
+app.get<{ Params: { id: string } }>("/api/shifts/:id/report", async (req) => {
+  requireWasher(req);
+  return buildShiftReport(req.params.id);
 });
 
 app.put<{
@@ -646,6 +686,19 @@ app.get<{ Querystring: { period?: string } }>("/api/admin/analytics", async (req
     from = new Date(`${label}T00:00:00+03:00`);
   }
   return analytics(from.toISOString(), now.toISOString());
+});
+
+app.get<{ Querystring: { limit?: string } }>("/api/admin/shifts", async (req) => {
+  requireAdmin(req);
+  const limit = Number(req.query.limit ?? 40) || 40;
+  return { shifts: listShifts(limit), current: getShiftStatus() };
+});
+
+app.get<{ Params: { id: string } }>("/api/admin/shifts/:id", async (req) => {
+  requireAdmin(req);
+  const shift = getShift(req.params.id);
+  if (!shift) throw Object.assign(new Error("Смена не найдена"), { statusCode: 404 });
+  return buildShiftReport(req.params.id);
 });
 
 app.post("/api/admin/sync", async (req) => {
