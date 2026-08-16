@@ -563,7 +563,7 @@ a.topbar-pill {
   padding: 0.3rem;
   border-radius: 14px;
   border: 2px solid var(--brand-silver-soft);
-  background: #1a1a1a;
+  background: #fff;
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -620,9 +620,10 @@ a.topbar-pill {
   width: 48px;
   height: 48px;
   object-fit: contain;
-  background: #1a1a1a;
+  background: #fff;
   border-radius: 10px;
   padding: 0.25rem;
+  border: 1px solid var(--brand-silver-soft);
 }
 
 .class-info-item p {
