@@ -23,7 +23,11 @@ function tableColumns(table: string): Set<string> {
 
 /** Вкладки кассы: Услуги / Товары (+ можно добавить новые). */
 export const TAB_SLUG_SERVICES = "services";
+export const TAB_SLUG_EXTRA_SERVICES = "extra-services";
 export const TAB_SLUG_PRODUCTS = "products";
+
+/** Вкладки, где цена берётся из service_prices по классу авто. */
+export const CLASS_PRICED_TAB_SLUGS = [TAB_SLUG_SERVICES, TAB_SLUG_EXTRA_SERVICES] as const;
 
 export function migrate() {
   db.exec(`
@@ -51,6 +55,7 @@ export function migrate() {
     CREATE TABLE IF NOT EXISTS services (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
       price_kopecks INTEGER NOT NULL,
       active INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -156,9 +161,12 @@ export function migrate() {
     );
   `);
 
-  // Существующие БД без tab_id
+  // Существующие БД без tab_id / description — данные не трогаем
   if (!tableColumns("services").has("tab_id")) {
     db.exec("ALTER TABLE services ADD COLUMN tab_id TEXT");
+  }
+  if (!tableColumns("services").has("description")) {
+    db.exec("ALTER TABLE services ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   }
 
   const orderCols = tableColumns("orders");
@@ -256,24 +264,30 @@ export function listVehicleClasses(activeOnly = false): VehicleClassRow[] {
     .all() as VehicleClassRow[];
 }
 
+export function isClassPricedTabId(tabId: string | null | undefined): boolean {
+  if (!tabId) return false;
+  for (const slug of CLASS_PRICED_TAB_SLUGS) {
+    const tab = getCatalogTabBySlug(slug);
+    if (tab && tab.id === tabId) return true;
+  }
+  return false;
+}
+
 export function isServiceTabItem(serviceId: string): boolean {
-  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
-  if (!servicesTab) return false;
   const row = db
     .prepare("SELECT tab_id FROM services WHERE id = ?")
     .get(serviceId) as { tab_id: string | null } | undefined;
-  return !!row && row.tab_id === servicesTab.id;
+  return isClassPricedTabId(row?.tab_id);
 }
 
-/** Цена для кассы: товары — services.price_kopecks; услуги — service_prices или null. */
+/** Цена для кассы: товары — services.price_kopecks; услуги/доп.услуги — service_prices или null. */
 export function resolveServicePrice(serviceId: string, classId: string | null): number | null {
   const svc = db
     .prepare("SELECT id, price_kopecks, tab_id FROM services WHERE id = ?")
     .get(serviceId) as { id: string; price_kopecks: number; tab_id: string | null } | undefined;
   if (!svc) return null;
 
-  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
-  if (!servicesTab || svc.tab_id !== servicesTab.id) {
+  if (!isClassPricedTabId(svc.tab_id)) {
     return svc.price_kopecks;
   }
 
@@ -328,7 +342,7 @@ export function getCatalogTabBySlug(slug: string): { id: string; slug: string; n
   return row ?? null;
 }
 
-/** Гарантирует вкладки Услуги/Товары и привязку позиций. */
+/** Гарантирует вкладки Услуги / Доп.услуги / Товары и привязку позиций. */
 export function ensureDefaultCatalogTabs() {
   function ensureTab(slug: string, name: string, sortOrder: number): string {
     const existing = getCatalogTabBySlug(slug);
@@ -341,7 +355,22 @@ export function ensureDefaultCatalogTabs() {
   }
 
   const servicesTabId = ensureTab(TAB_SLUG_SERVICES, "Услуги", 1);
-  const productsTabId = ensureTab(TAB_SLUG_PRODUCTS, "Товары", 2);
+  const extrasTabId = ensureTab(TAB_SLUG_EXTRA_SERVICES, "Доп.услуги", 2);
+  const productsTabId = ensureTab(TAB_SLUG_PRODUCTS, "Товары", 3);
+
+  // Фиксированный порядок системных вкладок на кассе
+  db.prepare("UPDATE catalog_tabs SET name = ?, sort_order = 1 WHERE id = ?").run(
+    "Услуги",
+    servicesTabId
+  );
+  db.prepare("UPDATE catalog_tabs SET name = ?, sort_order = 2 WHERE id = ?").run(
+    "Доп.услуги",
+    extrasTabId
+  );
+  db.prepare("UPDATE catalog_tabs SET name = ?, sort_order = 3 WHERE id = ?").run(
+    "Товары",
+    productsTabId
+  );
 
   db.prepare(
     "UPDATE services SET tab_id = ? WHERE tab_id IS NULL OR tab_id = ''"

@@ -337,6 +337,25 @@ a.topbar-pill {
   gap: 1rem;
 }
 
+.service-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.service-chip-name {
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.service-chip-desc {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: var(--muted, #6b7280);
+  line-height: 1.3;
+}
+
 .service-chip.selected {
   border-color: var(--brand-primary);
   background: color-mix(in srgb, var(--brand-primary) 8%, white);
@@ -424,6 +443,40 @@ a.topbar-pill {
   text-align: left;
   padding: 0.75rem 0.5rem;
   border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.table th.table-actions,
+.table td.table-actions {
+  text-align: right;
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.table-actions-row {
+  display: inline-flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: none;
+  margin-left: auto;
+}
+
+.table-actions-row > button {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.table tr.row-editing {
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
 }
 
 .table th {
@@ -656,6 +709,84 @@ a.topbar-pill {
     gap: 1rem;
     align-items: start;
   }
+}
+
+.pos-cart-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pos-cart-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: min(42vh, 360px);
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.pos-cart-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-silver-soft) 28%, white);
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.pos-cart-line-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.pos-cart-line-name {
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.pos-cart-line-desc {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.pos-cart-line-meta {
+  font-size: 0.8rem;
+}
+
+.pos-cart-line-sum {
+  flex-shrink: 0;
+  font-size: 1rem;
+}
+
+.pos-cart-totals {
+  margin-top: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pos-cart-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.pos-cart-total-row-final {
+  margin-top: 0.25rem;
+  font-size: 1.75rem;
+  font-weight: 800;
+}
+
+.pos-cart-total-row-final .muted {
+  font-size: 0.95rem;
+  font-weight: 600;
 }
 
 /* Скидка: форма кнопки оплаты (radius), компактный белый select */
@@ -905,10 +1036,15 @@ input.touch-field-input {
 
 .osk-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
+}
+
+.osk-header-field {
+  flex: 1;
+  min-width: 0;
 }
 
 .osk-header-actions {
@@ -916,6 +1052,7 @@ input.touch-field-input {
   flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
+  padding-top: 1.1rem;
 }
 
 .osk-value {
@@ -923,6 +1060,22 @@ input.touch-field-input {
   font-weight: 700;
   min-height: 1.6em;
   word-break: break-word;
+}
+
+.osk-value-input {
+  display: block;
+  width: 100%;
+  margin-top: 0.2rem;
+  min-height: 48px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 2px solid var(--brand-primary);
+  background: #fff;
+  font: inherit;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--ink);
+  outline: none;
 }
 
 .osk-keys {

@@ -83,9 +83,12 @@ export function AdminPage() {
     byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
   } | null>(null);
 
-  const [svcForm, setSvcForm] = useState({ name: "", priceRub: "", sortOrder: "0" });
+  const [svcForm, setSvcForm] = useState({ name: "", description: "", priceRub: "", sortOrder: "0" });
+  const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
+  const [editingServiceActive, setEditingServiceActive] = useState(true);
   const [classForm, setClassForm] = useState({ name: "", description: "", sortOrder: "10" });
   const [priceClassId, setPriceClassId] = useState<string | null>(null);
+  const [priceTabSlug, setPriceTabSlug] = useState<"services" | "extra-services">("services");
   const [priceItems, setPriceItems] = useState<PriceItemRow[]>([]);
   const [tabForm, setTabForm] = useState({ name: "", sortOrder: "10" });
   const [discForm, setDiscForm] = useState({ name: "", type: "percent", value: "" });
@@ -122,7 +125,9 @@ export function AdminPage() {
     );
   }, [tab, catalogTabs]);
 
-  const isServicesTab = activeCatalogTab?.slug === "services";
+  const isClassPricedTab =
+    activeCatalogTab?.slug === "services" || activeCatalogTab?.slug === "extra-services";
+  const isExtraServicesTab = activeCatalogTab?.slug === "extra-services";
 
   const itemsForActiveTab = useMemo(() => {
     if (!activeCatalogTab) return [];
@@ -216,9 +221,9 @@ export function AdminPage() {
     return () => window.removeEventListener("art:unauthorized", onUnauthorized);
   }, []);
 
-  async function loadServicePrices(classId: string) {
+  async function loadServicePrices(classId: string, tabSlug = priceTabSlug) {
     if (!token) return;
-    const res = await adminApi.servicePrices(token, classId);
+    const res = await adminApi.servicePrices(token, classId, tabSlug);
     setPriceItems(
       res.items.map((item) => ({
         serviceId: item.serviceId,
@@ -261,11 +266,11 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!token || tab !== "service-prices" || !priceClassId) return;
-    loadServicePrices(priceClassId).catch((e) => {
+    loadServicePrices(priceClassId, priceTabSlug).catch((e) => {
       if (isUnauthorized(e)) forceLogout(e.message);
       else setError(e.message);
     });
-  }, [token, tab, priceClassId]);
+  }, [token, tab, priceClassId, priceTabSlug]);
 
   useEffect(() => {
     if (!token || tab !== "updates") return;
@@ -289,10 +294,15 @@ export function AdminPage() {
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
     const services = sorted.find((ct) => ct.slug === "services");
+    const extras = sorted.find((ct) => ct.slug === "extra-services");
     const products = sorted.find((ct) => ct.slug === "products");
-    const others = sorted.filter((ct) => ct.slug !== "services" && ct.slug !== "products");
+    const others = sorted.filter(
+      (ct) =>
+        ct.slug !== "services" && ct.slug !== "extra-services" && ct.slug !== "products"
+    );
     const items: { id: Tab; label: string }[] = [];
     if (services) items.push({ id: `catalog:${services.slug}`, label: services.name });
+    if (extras) items.push({ id: `catalog:${extras.slug}`, label: extras.name });
     items.push({ id: "vehicle-classes", label: "Классификация авто" });
     items.push({ id: "service-prices", label: "Цены на услуги" });
     if (products) items.push({ id: `catalog:${products.slug}`, label: products.name });
@@ -355,6 +365,12 @@ export function AdminPage() {
     }
     setTab(item.id as Tab);
   }
+
+  useEffect(() => {
+    setEditingServiceId(null);
+    setEditingServiceActive(true);
+    setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+  }, [tab]);
 
   if (!token) {
     return (
@@ -455,59 +471,79 @@ export function AdminPage() {
           <div className="panel stack">
             <h2 className="h2">{activeCatalogTab.name}</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              {isServicesTab
-                ? "Список услуг мойки (без цены). Цены задаются во вкладке «Цены на услуги» по классу авто."
+              {isClassPricedTab
+                ? isExtraServicesTab
+                  ? "Дополнительные услуги (без цены в списке). Цены задаются во вкладке «Цены на услуги» по классу авто."
+                  : "Список услуг мойки (без цены). Цены задаются во вкладке «Цены на услуги» по классу авто."
                 : "Позиции вкладки на кассе. Для товаров указывайте название и цену."}
             </p>
             <table className="table">
               <thead>
                 <tr>
                   <th>Название</th>
-                  {!isServicesTab && <th>Цена</th>}
-                  <th>Активна</th>
-                  <th />
+                  {isClassPricedTab && <th>Описание</th>}
+                  {!isClassPricedTab && <th>Цена</th>}
+                  <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {itemsForActiveTab.map((s) => (
-                  <tr key={s.id}>
+                  <tr key={s.id} className={editingServiceId === s.id ? "row-editing" : undefined}>
                     <td>{s.name}</td>
-                    {!isServicesTab && <td>{formatRub(s.priceKopecks)}</td>}
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() =>
-                          void adminApi
-                            .saveService(
-                              token,
-                              {
-                                name: s.name,
-                                priceKopecks: s.priceKopecks,
-                                active: !s.active,
-                                sortOrder: s.sortOrder,
-                                tabId: s.tabId,
-                              },
-                              s.id
+                    {isClassPricedTab && <td className="muted">{s.description || "—"}</td>}
+                    {!isClassPricedTab && <td>{formatRub(s.priceKopecks)}</td>}
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            setEditingServiceId(s.id);
+                            setEditingServiceActive(s.active);
+                            setSvcForm({
+                              name: s.name,
+                              description: s.description ?? "",
+                              priceRub: (s.priceKopecks / 100).toString(),
+                              sortOrder: String(s.sortOrder),
+                            });
+                          }}
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveService(
+                                token,
+                                {
+                                  name: s.name,
+                                  description: s.description ?? "",
+                                  priceKopecks: s.priceKopecks,
+                                  active: !s.active,
+                                  sortOrder: s.sortOrder,
+                                  tabId: s.tabId,
+                                },
+                                s.id
+                              )
+                              .then(refresh)
+                          }
+                        >
+                          {s.active ? "Выкл" : "Вкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(`Удалить «${s.name}»?`, () =>
+                              adminApi.deleteService(token, s.id)
                             )
-                            .then(refresh)
-                        }
-                      >
-                        {s.active ? "Выкл" : "Вкл"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        onClick={() =>
-                          void removeWithConfirm(`Удалить «${s.name}»?`, () =>
-                            adminApi.deleteService(token, s.id)
-                          )
-                        }
-                      >
-                        Удалить
-                      </button>
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -516,7 +552,7 @@ export function AdminPage() {
             {itemsForActiveTab.length === 0 && (
               <p className="muted">Пока пусто — добавьте первую позицию ниже.</p>
             )}
-            <div className="row">
+            <div className="row" style={{ flexWrap: "wrap" }}>
               <TouchField
                 placeholder="Название"
                 title="Название"
@@ -524,7 +560,17 @@ export function AdminPage() {
                 value={svcForm.name}
                 onChange={(name) => setSvcForm((f) => ({ ...f, name }))}
               />
-              {!isServicesTab && (
+              {isClassPricedTab && (
+                <TouchField
+                  placeholder="Описание"
+                  title="Описание"
+                  mode="text"
+                  value={svcForm.description}
+                  onChange={(description) => setSvcForm((f) => ({ ...f, description }))}
+                  style={{ minWidth: "220px", flex: "1 1 220px" }}
+                />
+              )}
+              {!isClassPricedTab && (
                 <TouchField
                   placeholder="Цена ₽"
                   title="Цена ₽"
@@ -536,25 +582,56 @@ export function AdminPage() {
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() =>
+                onClick={() => {
+                  if (!svcForm.name.trim()) {
+                    setError("Укажите название");
+                    return;
+                  }
+                  const existing = editingServiceId
+                    ? services.find((x) => x.id === editingServiceId)
+                    : null;
+                  const priceKopecks = isClassPricedTab
+                    ? (existing?.priceKopecks ?? 0)
+                    : Math.round(Number(svcForm.priceRub) * 100);
                   void adminApi
-                    .saveService(token, {
-                      name: svcForm.name,
-                      priceKopecks: isServicesTab
-                        ? 0
-                        : Math.round(Number(svcForm.priceRub) * 100),
-                      active: true,
-                      sortOrder: Number(svcForm.sortOrder) || 0,
-                      tabId: activeCatalogTab.id,
-                    })
+                    .saveService(
+                      token,
+                      {
+                        name: svcForm.name.trim(),
+                        description: isClassPricedTab
+                          ? svcForm.description.trim()
+                          : (existing?.description ?? ""),
+                        priceKopecks,
+                        active: editingServiceId ? editingServiceActive : true,
+                        sortOrder: Number(svcForm.sortOrder) || existing?.sortOrder || 0,
+                        tabId: activeCatalogTab.id,
+                      },
+                      editingServiceId ?? undefined
+                    )
                     .then(() => {
-                      setSvcForm({ name: "", priceRub: "", sortOrder: "0" });
+                      setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+                      setEditingServiceId(null);
+                      setEditingServiceActive(true);
                       return refresh();
                     })
-                }
+                    .catch((e) => setError(e instanceof Error ? e.message : "Ошибка сохранения"));
+                }}
               >
-                Добавить
+                {editingServiceId ? "Сохранить" : "Добавить"}
               </button>
+              {editingServiceId && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setEditingServiceId(null);
+                    setEditingServiceActive(true);
+                    setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+                  }}
+                >
+                  Отмена
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -571,8 +648,7 @@ export function AdminPage() {
                   <th>Название</th>
                   <th>Описание</th>
                   <th>Порядок</th>
-                  <th>Активна</th>
-                  <th />
+                  <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -581,41 +657,41 @@ export function AdminPage() {
                     <td>{vc.name}</td>
                     <td className="muted">{vc.description || "—"}</td>
                     <td>{vc.sortOrder}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() =>
-                          void adminApi
-                            .saveVehicleClass(
-                              token,
-                              {
-                                name: vc.name,
-                                description: vc.description,
-                                iconKey: vc.iconKey,
-                                sortOrder: vc.sortOrder,
-                                active: !vc.active,
-                              },
-                              vc.id
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveVehicleClass(
+                                token,
+                                {
+                                  name: vc.name,
+                                  description: vc.description,
+                                  iconKey: vc.iconKey,
+                                  sortOrder: vc.sortOrder,
+                                  active: !vc.active,
+                                },
+                                vc.id
+                              )
+                              .then(refresh)
+                          }
+                        >
+                          {vc.active ? "Выкл" : "Вкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(`Удалить класс «${vc.name}»?`, () =>
+                              adminApi.deleteVehicleClass(token, vc.id)
                             )
-                            .then(refresh)
-                        }
-                      >
-                        {vc.active ? "Выкл" : "Вкл"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        onClick={() =>
-                          void removeWithConfirm(`Удалить класс «${vc.name}»?`, () =>
-                            adminApi.deleteVehicleClass(token, vc.id)
-                          )
-                        }
-                      >
-                        Удалить
-                      </button>
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -667,13 +743,29 @@ export function AdminPage() {
           <div className="panel stack">
             <h2 className="h2">Цены на услуги</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              Цены услуг мойки по классу авто. Пустое поле — услуга скрыта на кассе для этого
-              класса.
+              Цены услуг и доп.услуг по классу авто. Пустое поле — позиция скрыта на кассе для
+              этого класса.
             </p>
             {activeVehicleClasses.length === 0 ? (
               <p className="muted">Сначала добавьте активные классы во вкладке «Классификация авто».</p>
             ) : (
               <>
+                <div className="catalog-tabs">
+                  <button
+                    type="button"
+                    className={priceTabSlug === "services" ? "active" : ""}
+                    onClick={() => setPriceTabSlug("services")}
+                  >
+                    Услуги
+                  </button>
+                  <button
+                    type="button"
+                    className={priceTabSlug === "extra-services" ? "active" : ""}
+                    onClick={() => setPriceTabSlug("extra-services")}
+                  >
+                    Доп.услуги
+                  </button>
+                </div>
                 <div className="catalog-tabs">
                   {activeVehicleClasses.map((vc) => (
                     <button
@@ -689,7 +781,7 @@ export function AdminPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Услуга</th>
+                      <th>{priceTabSlug === "extra-services" ? "Доп.услуга" : "Услуга"}</th>
                       <th>Цена ₽</th>
                     </tr>
                   </thead>
@@ -717,7 +809,11 @@ export function AdminPage() {
                   </tbody>
                 </table>
                 {priceItems.length === 0 && (
-                  <p className="muted">Нет услуг — добавьте их во вкладке «Услуги».</p>
+                  <p className="muted">
+                    {priceTabSlug === "extra-services"
+                      ? "Нет доп.услуг — добавьте их во вкладке «Доп.услуги»."
+                      : "Нет услуг — добавьте их во вкладке «Услуги»."}
+                  </p>
                 )}
                 <button
                   type="button"
@@ -740,7 +836,7 @@ export function AdminPage() {
                           };
                         }),
                       })
-                      .then(() => loadServicePrices(priceClassId))
+                      .then(() => loadServicePrices(priceClassId, priceTabSlug))
                       .then(() => setSyncMsg("Цены сохранены"))
                       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"));
                   }}
@@ -759,8 +855,8 @@ export function AdminPage() {
           <div className="panel stack">
             <h2 className="h2">Вкладки кассы</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              Управляют переключателями «Услуги / Товары» на кассе. Можно добавить новую вкладку
-              (например, «Химия»).
+              Управляют переключателями на кассе (Услуги / Доп.услуги / Товары). Можно добавить
+              новую вкладку (например, «Химия»).
             </p>
             <table className="table">
               <thead>
@@ -768,8 +864,7 @@ export function AdminPage() {
                   <th>Название</th>
                   <th>Slug</th>
                   <th>Порядок</th>
-                  <th>Активна</th>
-                  <th />
+                  <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -778,40 +873,40 @@ export function AdminPage() {
                     <td>{ct.name}</td>
                     <td className="muted">{ct.slug}</td>
                     <td>{ct.sortOrder}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() =>
-                          void adminApi
-                            .saveCatalogTab(
-                              token,
-                              {
-                                name: ct.name,
-                                sortOrder: ct.sortOrder,
-                                active: !ct.active,
-                              },
-                              ct.id
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveCatalogTab(
+                                token,
+                                {
+                                  name: ct.name,
+                                  sortOrder: ct.sortOrder,
+                                  active: !ct.active,
+                                },
+                                ct.id
+                              )
+                              .then(refresh)
+                          }
+                        >
+                          {ct.active ? "Выкл" : "Вкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(
+                              `Удалить вкладку «${ct.name}»? Сначала должны быть удалены все позиции.`,
+                              () => adminApi.deleteCatalogTab(token, ct.id)
                             )
-                            .then(refresh)
-                        }
-                      >
-                        {ct.active ? "Выкл" : "Вкл"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        onClick={() =>
-                          void removeWithConfirm(
-                            `Удалить вкладку «${ct.name}»? Сначала должны быть удалены все позиции.`,
-                            () => adminApi.deleteCatalogTab(token, ct.id)
-                          )
-                        }
-                      >
-                        Удалить
-                      </button>
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -864,7 +959,7 @@ export function AdminPage() {
                   <th>Название</th>
                   <th>Тип</th>
                   <th>Значение</th>
-                  <th />
+                  <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
@@ -873,8 +968,8 @@ export function AdminPage() {
                     <td>{d.name}</td>
                     <td>{d.type}</td>
                     <td>{d.type === "percent" ? `${d.value}%` : formatRub(d.value)}</td>
-                    <td>
-                      <div className="row" style={{ gap: "0.35rem", flexWrap: "nowrap" }}>
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
                         <button
                           type="button"
                           className="btn-ghost"
@@ -961,39 +1056,38 @@ export function AdminPage() {
               <thead>
                 <tr>
                   <th>Имя</th>
-                  <th>Статус</th>
-                  <th />
+                  <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {washers.map((w) => (
                   <tr key={w.id}>
                     <td>{w.name}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() =>
-                          void adminApi
-                            .saveWasher(token, { name: w.name, active: !w.active }, w.id)
-                            .then(refresh)
-                        }
-                      >
-                        {w.active ? "Активен" : "Выкл"}
-                      </button>
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        className="btn-danger"
-                        onClick={() =>
-                          void removeWithConfirm(`Удалить мойщика «${w.name}»?`, () =>
-                            adminApi.deleteWasher(token, w.id)
-                          )
-                        }
-                      >
-                        Удалить
-                      </button>
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveWasher(token, { name: w.name, active: !w.active }, w.id)
+                              .then(refresh)
+                          }
+                        >
+                          {w.active ? "Активен" : "Выкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(`Удалить мойщика «${w.name}»?`, () =>
+                              adminApi.deleteWasher(token, w.id)
+                            )
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -182,6 +182,23 @@ export function PosPage() {
     return catalog.services.reduce((s, svc) => s + svc.priceKopecks * (qty[svc.id] ?? 0), 0);
   }, [catalog, qty]);
 
+  const selectedLines = useMemo(() => {
+    if (!catalog) return [];
+    return catalog.services
+      .filter((svc) => (qty[svc.id] ?? 0) > 0)
+      .map((svc) => {
+        const q = qty[svc.id] ?? 0;
+        return {
+          id: svc.id,
+          name: svc.name,
+          description: svc.description ?? "",
+          qty: q,
+          priceKopecks: svc.priceKopecks,
+          lineTotal: svc.priceKopecks * q,
+        };
+      });
+  }, [catalog, qty]);
+
   function applyOrder(o: OrderDto) {
     setOrder(o);
     const map: Record<string, number> = {};
@@ -590,7 +607,12 @@ export function PosPage() {
                   className={`service-chip ${qty[s.id] ? "selected" : ""}`}
                   onClick={() => toggleService(s.id)}
                 >
-                  <span>{s.name}</span>
+                  <span className="service-chip-text">
+                    <span className="service-chip-name">{s.name}</span>
+                    {s.description ? (
+                      <span className="service-chip-desc">{s.description}</span>
+                    ) : null}
+                  </span>
                   <strong>{formatRub(s.priceKopecks)}</strong>
                 </button>
               ))}
@@ -602,8 +624,36 @@ export function PosPage() {
             </div>
           </section>
 
-          <section className="panel">
-            <h2 className="h2">Скидка</h2>
+          <section className="panel pos-cart-panel">
+            <h2 className="h2">Заказ</h2>
+            <div className="pos-cart-list">
+              {selectedLines.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Нет выбранных позиций
+                </p>
+              ) : (
+                selectedLines.map((line) => (
+                  <div key={line.id} className="pos-cart-line">
+                    <div className="pos-cart-line-text">
+                      <span className="pos-cart-line-name">{line.name}</span>
+                      {line.description ? (
+                        <span className="pos-cart-line-desc">{line.description}</span>
+                      ) : null}
+                      {line.qty > 1 ? (
+                        <span className="pos-cart-line-meta muted">
+                          {formatRub(line.priceKopecks)} × {line.qty}
+                        </span>
+                      ) : null}
+                    </div>
+                    <strong className="pos-cart-line-sum">{formatRub(line.lineTotal)}</strong>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <h2 className="h2" style={{ marginTop: "1rem" }}>
+              Скидка
+            </h2>
             <select
               className="discount-select"
               value={discountId ?? ""}
@@ -621,18 +671,18 @@ export function PosPage() {
               ))}
             </select>
 
-            <div style={{ marginTop: "1.25rem" }}>
-              <div className="muted">Подытог</div>
-              <div>{formatRub(order?.subtotalKopecks ?? subtotal)}</div>
-              <div className="muted" style={{ marginTop: "0.5rem" }}>
-                Скидка
+            <div className="pos-cart-totals">
+              <div className="pos-cart-total-row">
+                <span className="muted">Подытог</span>
+                <span>{formatRub(order?.subtotalKopecks ?? subtotal)}</span>
               </div>
-              <div>−{formatRub(order?.discountKopecks ?? 0)}</div>
-              <div className="muted" style={{ marginTop: "0.5rem" }}>
-                Итого
+              <div className="pos-cart-total-row">
+                <span className="muted">Скидка</span>
+                <span>−{formatRub(order?.discountKopecks ?? 0)}</span>
               </div>
-              <div style={{ fontSize: "1.75rem", fontWeight: 800 }}>
-                {formatRub(order?.totalKopecks ?? subtotal)}
+              <div className="pos-cart-total-row pos-cart-total-row-final">
+                <span className="muted">Итого</span>
+                <span>{formatRub(order?.totalKopecks ?? subtotal)}</span>
               </div>
             </div>
 

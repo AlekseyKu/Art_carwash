@@ -4,8 +4,10 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 
@@ -153,6 +155,7 @@ function KeyboardPanel({
     session.layout ?? (session.mode === "ascii" ? "en" : "ru")
   );
   const [pasteError, setPasteError] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setValue(session.value);
@@ -160,18 +163,23 @@ function KeyboardPanel({
   }, [session]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    inputRef.current?.focus();
+    const id = window.setTimeout(() => inputRef.current?.focus(), 50);
+    return () => window.clearTimeout(id);
+  }, [session]);
+
+  function filterRaw(raw: string): string {
+    const mode = session.mode;
+    let next = raw;
+    if (mode === "pin") next = raw.replace(/\D/g, "");
+    else if (mode === "numeric") next = raw.replace(/[^\d.,]/g, "").replace(",", ".");
+    else if (mode === "ascii") next = raw.replace(/[^\x20-\x7E]/g, "");
+    if (session.maxLength != null) next = next.slice(0, session.maxLength);
+    return next;
+  }
 
   function commit(next: string) {
-    let out = next;
-    if (session.maxLength != null && out.length > session.maxLength) {
-      out = out.slice(0, session.maxLength);
-    }
+    const out = filterRaw(next);
     setValue(out);
     session.onChange(out);
   }
@@ -184,15 +192,18 @@ function KeyboardPanel({
       if (ch === "." || ch === ",") {
         if (value.includes(".") || value.includes(",")) return;
         commit(value + ".");
+        inputRef.current?.focus();
         return;
       }
       if (!/^\d$/.test(ch)) return;
     }
     commit(value + ch);
+    inputRef.current?.focus();
   }
 
   function backspace() {
     commit(value.slice(0, -1));
+    inputRef.current?.focus();
   }
 
   function applyPastedText(raw: string) {
@@ -201,17 +212,14 @@ function KeyboardPanel({
       setPasteError("Буфер обмена пуст");
       return;
     }
-    const mode = session.mode;
-    let next = text;
-    if (mode === "pin") next = text.replace(/\D/g, "");
-    else if (mode === "numeric") next = text.replace(/[^\d.,]/g, "").replace(",", ".");
-    else if (mode === "ascii") next = text.replace(/[^\x20-\x7E]/g, "");
+    const next = filterRaw(text);
     if (!next) {
       setPasteError("В буфере нет подходящего текста");
       return;
     }
     setPasteError("");
     commit(next);
+    inputRef.current?.focus();
   }
 
   async function pasteFromClipboard() {
@@ -229,6 +237,22 @@ function KeyboardPanel({
   }
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "Enter") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData("text") ?? "";
       if (!text) return;
@@ -237,12 +261,27 @@ function KeyboardPanel({
     };
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
-    // session/value intentionally via applyPastedText closure refresh each render
-  });
+    // applyPastedText замыкается на актуальном session/value через commit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, value]);
+
+  /** Не забирать фокус с поля ввода при нажатии экранных клавиш */
+  function keepInputFocus(e: ReactMouseEvent) {
+    e.preventDefault();
+  }
 
   const letterMode = session.mode === "text" || session.mode === "ascii";
   const rows = layout === "ru" ? RU_ROWS : EN_ROWS;
   const showSymbols = session.mode === "ascii" || layout === "en";
+  const inputType = session.mode === "pin" ? "password" : "text";
+  const inputMode =
+    session.mode === "pin"
+      ? "numeric"
+      : session.mode === "numeric"
+        ? "decimal"
+        : session.mode === "ascii"
+          ? "url"
+          : "text";
 
   return (
     <div className="osk-backdrop" onClick={onClose}>
@@ -253,13 +292,31 @@ function KeyboardPanel({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="osk-header">
-          <div>
+          <div className="osk-header-field">
             {session.title && (
               <div className="muted" style={{ fontSize: "0.85rem" }}>
                 {session.title}
               </div>
             )}
-            <div className="osk-value">{value || <span className="muted">…</span>}</div>
+            <input
+              ref={inputRef}
+              className="osk-value-input"
+              type={inputType}
+              inputMode={inputMode}
+              autoComplete="off"
+              spellCheck={false}
+              autoFocus
+              value={value}
+              maxLength={session.maxLength}
+              placeholder="Ввод с экранной или обычной клавиатуры"
+              onChange={(e) => commit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onClose();
+                }
+              }}
+            />
             {pasteError ? (
               <div style={{ color: "var(--danger)", fontSize: "0.8rem", marginTop: "0.25rem" }}>
                 {pasteError}
@@ -280,7 +337,13 @@ function KeyboardPanel({
           <div className="osk-keys">
             <div className="osk-row">
               {DIGITS.map((k) => (
-                <button key={k} type="button" className="osk-key" onClick={() => append(k)}>
+                <button
+                  key={k}
+                  type="button"
+                  className="osk-key"
+                  onMouseDown={keepInputFocus}
+                  onClick={() => append(k)}
+                >
                   {k}
                 </button>
               ))}
@@ -288,7 +351,13 @@ function KeyboardPanel({
             {showSymbols && (
               <div className="osk-row">
                 {SYMBOLS.map((k) => (
-                  <button key={k} type="button" className="osk-key" onClick={() => append(k)}>
+                  <button
+                    key={k}
+                    type="button"
+                    className="osk-key"
+                    onMouseDown={keepInputFocus}
+                    onClick={() => append(k)}
+                  >
                     {k}
                   </button>
                 ))}
@@ -297,7 +366,13 @@ function KeyboardPanel({
             {rows.map((row, i) => (
               <div key={i} className="osk-row">
                 {row.map((k) => (
-                  <button key={k} type="button" className="osk-key" onClick={() => append(k)}>
+                  <button
+                    key={k}
+                    type="button"
+                    className="osk-key"
+                    onMouseDown={keepInputFocus}
+                    onClick={() => append(k)}
+                  >
                     {k}
                   </button>
                 ))}
@@ -308,15 +383,26 @@ function KeyboardPanel({
                 <button
                   type="button"
                   className="osk-key osk-key-wide"
+                  onMouseDown={keepInputFocus}
                   onClick={() => setLayout((l) => (l === "ru" ? "en" : "ru"))}
                 >
                   {layout === "ru" ? "EN" : "РУ"}
                 </button>
               )}
-              <button type="button" className="osk-key osk-key-wide" onClick={() => append(" ")}>
+              <button
+                type="button"
+                className="osk-key osk-key-wide"
+                onMouseDown={keepInputFocus}
+                onClick={() => append(" ")}
+              >
                 Пробел
               </button>
-              <button type="button" className="osk-key osk-key-wide" onClick={backspace}>
+              <button
+                type="button"
+                className="osk-key osk-key-wide"
+                onMouseDown={keepInputFocus}
+                onClick={backspace}
+              >
                 ⌫
               </button>
             </div>
@@ -329,6 +415,7 @@ function KeyboardPanel({
                   key={k}
                   type="button"
                   className="osk-key osk-key-num"
+                  onMouseDown={keepInputFocus}
                   onClick={() => {
                     if (k === "⌫") backspace();
                     else if (k === "C") commit("");

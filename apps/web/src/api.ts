@@ -320,6 +320,7 @@ export type CatalogTabDto = {
 export type CatalogItemDto = {
   id: string;
   name: string;
+  description: string;
   priceKopecks: number;
   active: boolean;
   sortOrder: number;
@@ -367,6 +368,7 @@ export const adminApi = {
     token: string,
     body: {
       name: string;
+      description?: string;
       priceKopecks: number;
       active: boolean;
       sortOrder: number;
@@ -415,14 +417,17 @@ export const adminApi = {
       method: "DELETE",
       token,
     }),
-  servicePrices: (token: string, classId?: string) =>
-    request<{
+  servicePrices: (token: string, classId?: string, tabSlug?: string) => {
+    const params = new URLSearchParams();
+    if (classId) params.set("classId", classId);
+    if (tabSlug) params.set("tabSlug", tabSlug);
+    const q = params.toString();
+    return request<{
       classId: string;
+      tabSlug?: string;
       items: { serviceId: string; name: string; priceKopecks: number | null }[];
-    }>(
-      `/api/admin/service-prices${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`,
-      { token }
-    ),
+    }>(`/api/admin/service-prices${q ? `?${q}` : ""}`, { token });
+  },
   saveServicePrices: (
     token: string,
     body: { classId: string; items: { serviceId: string; priceKopecks: number | null }[] }

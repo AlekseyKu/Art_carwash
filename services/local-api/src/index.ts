@@ -27,11 +27,13 @@ import {
   getCatalogTabBySlug,
   getDefaultVehicleClass,
   getSetting,
+  isClassPricedTabId,
   listVehicleClasses,
   migrate,
   resolveServicePrice,
   seedIfEmpty,
   setSetting,
+  TAB_SLUG_EXTRA_SERVICES,
   TAB_SLUG_SERVICES,
   type VehicleClassRow,
 } from "./db.js";
@@ -151,6 +153,7 @@ app.get("/api/posts", async () => {
 function mapServiceRow(s: {
   id: string;
   name: string;
+  description?: string | null;
   price_kopecks: number;
   active: number;
   sort_order: number;
@@ -159,6 +162,7 @@ function mapServiceRow(s: {
   return {
     id: s.id,
     name: s.name,
+    description: s.description ?? "",
     priceKopecks: s.price_kopecks,
     active: !!s.active,
     sortOrder: s.sort_order,
@@ -229,13 +233,12 @@ app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
     sort_order: number;
     active: number;
   }[];
-  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
-
   const services = db
     .prepare("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, name")
     .all() as {
     id: string;
     name: string;
+    description?: string | null;
     price_kopecks: number;
     active: number;
     sort_order: number;
@@ -244,8 +247,7 @@ app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
 
   const catalogServices = [];
   for (const s of services) {
-    const isServiceTab = servicesTab && s.tab_id === servicesTab.id;
-    if (isServiceTab) {
+    if (isClassPricedTabId(s.tab_id)) {
       const price = resolveServicePrice(s.id, classId);
       if (price === null) continue;
       catalogServices.push({
@@ -520,6 +522,7 @@ app.get("/api/admin/services", async (req) => {
   const rows = db.prepare("SELECT * FROM services ORDER BY sort_order, name").all() as {
     id: string;
     name: string;
+    description?: string | null;
     price_kopecks: number;
     active: number;
     sort_order: number;
@@ -531,6 +534,7 @@ app.get("/api/admin/services", async (req) => {
 app.post<{
   Body: {
     name: string;
+    description?: string;
     priceKopecks?: number;
     active?: boolean;
     sortOrder?: number;
@@ -542,13 +546,15 @@ app.post<{
   const tabId =
     req.body.tabId || getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id || "";
   if (!tabId) throw new Error("Не найдена вкладка каталога");
-  // Для вкладки «Услуги» цена на кассе из service_prices; в services допускается 0
+  // Для вкладок с ценой по классу (Услуги / Доп.услуги) в services допускается 0
   const priceKopecks = req.body.priceKopecks ?? 0;
+  const description = String(req.body.description ?? "").trim();
   db.prepare(
-    "INSERT INTO services (id, name, price_kopecks, active, sort_order, tab_id) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO services (id, name, description, price_kopecks, active, sort_order, tab_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
   ).run(
     id,
     req.body.name,
+    description,
     priceKopecks,
     req.body.active === false ? 0 : 1,
     req.body.sortOrder ?? 0,
@@ -561,6 +567,7 @@ app.put<{
   Params: { id: string };
   Body: {
     name: string;
+    description?: string;
     priceKopecks: number;
     active: boolean;
     sortOrder: number;
@@ -569,17 +576,22 @@ app.put<{
 }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
   const existing = db
-    .prepare("SELECT tab_id FROM services WHERE id = ?")
-    .get(req.params.id) as { tab_id: string | null } | undefined;
+    .prepare("SELECT tab_id, description FROM services WHERE id = ?")
+    .get(req.params.id) as { tab_id: string | null; description: string | null } | undefined;
   const tabId =
     req.body.tabId ||
     existing?.tab_id ||
     getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id ||
     "";
+  const description =
+    req.body.description !== undefined
+      ? String(req.body.description).trim()
+      : (existing?.description ?? "");
   db.prepare(
-    "UPDATE services SET name = ?, price_kopecks = ?, active = ?, sort_order = ?, tab_id = ? WHERE id = ?"
+    "UPDATE services SET name = ?, description = ?, price_kopecks = ?, active = ?, sort_order = ?, tab_id = ? WHERE id = ?"
   ).run(
     req.body.name,
+    description,
     req.body.priceKopecks,
     req.body.active ? 1 : 0,
     req.body.sortOrder,
@@ -683,39 +695,53 @@ app.delete<{ Params: { id: string } }>("/api/admin/vehicle-classes/:id", async (
   return { ok: true, soft: false };
 });
 
-app.get<{ Querystring: { classId?: string } }>("/api/admin/service-prices", async (req) => {
-  requireAdmin(req);
-  const classId = req.query.classId || getDefaultVehicleClass().id;
-  const vc = db.prepare("SELECT id FROM vehicle_classes WHERE id = ?").get(classId) as
-    | { id: string }
-    | undefined;
-  if (!vc) throw new Error("Класс не найден");
+app.get<{ Querystring: { classId?: string; tabSlug?: string } }>(
+  "/api/admin/service-prices",
+  async (req) => {
+    requireAdmin(req);
+    const classId = req.query.classId || getDefaultVehicleClass().id;
+    const vc = db.prepare("SELECT id FROM vehicle_classes WHERE id = ?").get(classId) as
+      | { id: string }
+      | undefined;
+    if (!vc) throw new Error("Класс не найден");
 
-  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
-  if (!servicesTab) throw new Error("Вкладка Услуги не найдена");
+    const tabSlug =
+      req.query.tabSlug === TAB_SLUG_EXTRA_SERVICES
+        ? TAB_SLUG_EXTRA_SERVICES
+        : TAB_SLUG_SERVICES;
+    const catalogTab = getCatalogTabBySlug(tabSlug);
+    if (!catalogTab) {
+      throw new Error(
+        tabSlug === TAB_SLUG_EXTRA_SERVICES
+          ? "Вкладка Доп.услуги не найдена"
+          : "Вкладка Услуги не найдена"
+      );
+    }
 
-  const services = db
-    .prepare(
-      "SELECT id, name FROM services WHERE tab_id = ? ORDER BY sort_order, name"
-    )
-    .all(servicesTab.id) as { id: string; name: string }[];
+    const services = db
+      .prepare(
+        "SELECT id, name FROM services WHERE tab_id = ? ORDER BY sort_order, name"
+      )
+      .all(catalogTab.id) as { id: string; name: string }[];
 
-  const priceStmt = db.prepare(
-    "SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?"
-  );
+    const priceStmt = db.prepare(
+      "SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?"
+    );
 
-  return {
-    classId,
-    items: services.map((s) => {
-      const row = priceStmt.get(s.id, classId) as { price_kopecks: number } | undefined;
-      return {
-        serviceId: s.id,
-        name: s.name,
-        priceKopecks: row ? row.price_kopecks : null,
-      };
-    }),
-  };
-});
+    return {
+      classId,
+      tabSlug,
+      items: services.map((s) => {
+        const row = priceStmt.get(s.id, classId) as { price_kopecks: number } | undefined;
+        return {
+          serviceId: s.id,
+          name: s.name,
+          priceKopecks: row ? row.price_kopecks : null,
+        };
+      }),
+    };
+  }
+);
 
 app.put<{
   Body: {
