@@ -126,7 +126,6 @@ export function PosPage() {
     api
       .catalog(vehicleClassId ?? undefined)
       .then((c) => {
-      .then((c) => {
         const tabs = c.tabs ?? [];
         setCatalog({
           ...c,
