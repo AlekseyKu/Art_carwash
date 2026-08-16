@@ -112,12 +112,13 @@ export const api = {
     }),
   logout: (token: string) =>
     request("/api/auth/logout", { method: "POST", token, body: JSON.stringify({}) }),
-  catalog: () =>
+  catalog: (classId?: string) =>
     request<{
+      vehicleClasses: VehicleClassDto[];
       tabs: CatalogTabDto[];
       services: CatalogItemDto[];
       discounts: { id: string; name: string; type: string; value: number }[];
-    }>("/api/catalog"),
+    }>(`/api/catalog${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`),
   draft: (postId: number, token: string) =>
     request<OrderDto>(`/api/orders/draft?postId=${postId}`, { token }),
   recentOrders: (token: string, limit = 5) =>
@@ -130,6 +131,12 @@ export const api = {
     request<OrderDto>(`/api/orders/${id}`, {
       method: "PUT",
       body: JSON.stringify(body),
+      token,
+    }),
+  setVehicleClass: (orderId: string, classId: string, token: string) =>
+    request<OrderDto>(`/api/orders/${orderId}/vehicle-class`, {
+      method: "PUT",
+      body: JSON.stringify({ classId }),
       token,
     }),
   checkout: (id: string, token: string) =>
@@ -282,6 +289,8 @@ export type OrderDto = {
   subtotalKopecks: number;
   discountKopecks: number;
   discountId: string | null;
+  vehicleClassId: string | null;
+  vehicleClassName: string | null;
   items: { serviceId: string; nameSnapshot: string; priceKopecks: number; qty: number }[];
 };
 
@@ -315,6 +324,16 @@ export type CatalogItemDto = {
   active: boolean;
   sortOrder: number;
   tabId: string;
+};
+
+export type VehicleClassDto = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  iconKey: string;
+  sortOrder: number;
+  active: boolean;
 };
 
 export const adminApi = {
@@ -360,6 +379,59 @@ export const adminApi = {
       : request("/api/admin/services", { method: "POST", body: JSON.stringify(body), token }),
   deleteService: (token: string, id: string) =>
     request<{ ok: boolean }>(`/api/admin/services/${id}`, { method: "DELETE", token }),
+  vehicleClasses: (token: string) =>
+    request<VehicleClassDto[]>("/api/admin/vehicle-classes", { token }),
+  saveVehicleClass: (
+    token: string,
+    body: {
+      name: string;
+      description?: string;
+      slug?: string;
+      iconKey?: string;
+      sortOrder?: number;
+      active?: boolean;
+    },
+    id?: string
+  ) =>
+    id
+      ? request(`/api/admin/vehicle-classes/${id}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            name: body.name,
+            description: body.description ?? "",
+            iconKey: body.iconKey,
+            sortOrder: body.sortOrder ?? 0,
+            active: body.active !== false,
+          }),
+          token,
+        })
+      : request("/api/admin/vehicle-classes", {
+          method: "POST",
+          body: JSON.stringify(body),
+          token,
+        }),
+  deleteVehicleClass: (token: string, id: string) =>
+    request<{ ok: boolean; soft?: boolean }>(`/api/admin/vehicle-classes/${id}`, {
+      method: "DELETE",
+      token,
+    }),
+  servicePrices: (token: string, classId?: string) =>
+    request<{
+      classId: string;
+      items: { serviceId: string; name: string; priceKopecks: number | null }[];
+    }>(
+      `/api/admin/service-prices${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`,
+      { token }
+    ),
+  saveServicePrices: (
+    token: string,
+    body: { classId: string; items: { serviceId: string; priceKopecks: number | null }[] }
+  ) =>
+    request<{ ok: boolean }>("/api/admin/service-prices", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      token,
+    }),
   discounts: (token: string) =>
     request<{ id: string; name: string; type: string; value: number; active: boolean }[]>(
       "/api/admin/discounts",

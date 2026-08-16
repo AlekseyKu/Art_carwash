@@ -137,6 +137,23 @@ export function migrate() {
       closed_by_washer_id TEXT,
       note TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS vehicle_classes (
+      id TEXT PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      icon_key TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1
+    );
+
+    CREATE TABLE IF NOT EXISTS service_prices (
+      service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+      class_id TEXT NOT NULL REFERENCES vehicle_classes(id) ON DELETE CASCADE,
+      price_kopecks INTEGER NOT NULL,
+      PRIMARY KEY (service_id, class_id)
+    );
   `);
 
   // Существующие БД без tab_id
@@ -144,11 +161,164 @@ export function migrate() {
     db.exec("ALTER TABLE services ADD COLUMN tab_id TEXT");
   }
 
-  if (!tableColumns("orders").has("shift_id")) {
+  const orderCols = tableColumns("orders");
+  if (!orderCols.has("shift_id")) {
     db.exec("ALTER TABLE orders ADD COLUMN shift_id TEXT");
+  }
+  if (!orderCols.has("vehicle_class_id")) {
+    db.exec("ALTER TABLE orders ADD COLUMN vehicle_class_id TEXT");
+  }
+  if (!orderCols.has("vehicle_class_name")) {
+    db.exec("ALTER TABLE orders ADD COLUMN vehicle_class_name TEXT");
   }
 
   ensureDefaultCatalogTabs();
+  ensureVehicleClassesAndPrices();
+}
+
+export type VehicleClassRow = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon_key: string;
+  sort_order: number;
+  active: number;
+};
+
+const DEFAULT_VEHICLE_CLASS_SLUG = "sedan";
+
+const DEFAULT_VEHICLE_CLASSES: {
+  slug: string;
+  name: string;
+  description: string;
+  icon_key: string;
+  sort_order: number;
+}[] = [
+  {
+    slug: "small",
+    name: "Маленькие",
+    description: "Daewoo Matiz и т.п.",
+    icon_key: "small",
+    sort_order: 1,
+  },
+  {
+    slug: "sedan",
+    name: "Легковые",
+    description: "Лада Гранта, Ford Focus, Audi A4 и т.п.",
+    icon_key: "sedan",
+    sort_order: 2,
+  },
+  {
+    slug: "crossover",
+    name: "Паркетники",
+    description: "Toyota RAV4, Haval Jolion, Kia Sportage и т.п.",
+    icon_key: "crossover",
+    sort_order: 3,
+  },
+  {
+    slug: "suv",
+    name: "Джипы",
+    description: "Toyota Land Cruiser, Mercedes G-Class, Land Rover Defender и т.п.",
+    icon_key: "suv",
+    sort_order: 4,
+  },
+  {
+    slug: "bus",
+    name: "Автобусы",
+    description: "Mercedes-Benz, Iveco, Ford Transit и т.п.",
+    icon_key: "bus",
+    sort_order: 5,
+  },
+];
+
+export function getVehicleClassBySlug(slug: string): VehicleClassRow | null {
+  const row = db
+    .prepare("SELECT * FROM vehicle_classes WHERE slug = ?")
+    .get(slug) as VehicleClassRow | undefined;
+  return row ?? null;
+}
+
+export function getDefaultVehicleClass(): VehicleClassRow {
+  const row = getVehicleClassBySlug(DEFAULT_VEHICLE_CLASS_SLUG);
+  if (!row) throw new Error("Класс Легковые (sedan) не найден");
+  return row;
+}
+
+export function listVehicleClasses(activeOnly = false): VehicleClassRow[] {
+  if (activeOnly) {
+    return db
+      .prepare("SELECT * FROM vehicle_classes WHERE active = 1 ORDER BY sort_order, name")
+      .all() as VehicleClassRow[];
+  }
+  return db
+    .prepare("SELECT * FROM vehicle_classes ORDER BY sort_order, name")
+    .all() as VehicleClassRow[];
+}
+
+export function isServiceTabItem(serviceId: string): boolean {
+  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
+  if (!servicesTab) return false;
+  const row = db
+    .prepare("SELECT tab_id FROM services WHERE id = ?")
+    .get(serviceId) as { tab_id: string | null } | undefined;
+  return !!row && row.tab_id === servicesTab.id;
+}
+
+/** Цена для кассы: товары — services.price_kopecks; услуги — service_prices или null. */
+export function resolveServicePrice(serviceId: string, classId: string | null): number | null {
+  const svc = db
+    .prepare("SELECT id, price_kopecks, tab_id FROM services WHERE id = ?")
+    .get(serviceId) as { id: string; price_kopecks: number; tab_id: string | null } | undefined;
+  if (!svc) return null;
+
+  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
+  if (!servicesTab || svc.tab_id !== servicesTab.id) {
+    return svc.price_kopecks;
+  }
+
+  if (!classId) return null;
+  const price = db
+    .prepare("SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?")
+    .get(serviceId, classId) as { price_kopecks: number } | undefined;
+  return price ? price.price_kopecks : null;
+}
+
+/** Seed классов + миграция цен услуг только в Легковые; draft без класса → sedan. */
+export function ensureVehicleClassesAndPrices() {
+  const count = db.prepare("SELECT COUNT(*) as c FROM vehicle_classes").get() as { c: number };
+  if (count.c === 0) {
+    for (const vc of DEFAULT_VEHICLE_CLASSES) {
+      db.prepare(
+        `INSERT INTO vehicle_classes (id, slug, name, description, icon_key, sort_order, active)
+         VALUES (?, ?, ?, ?, ?, ?, 1)`
+      ).run(nanoid(), vc.slug, vc.name, vc.description, vc.icon_key, vc.sort_order);
+    }
+  }
+
+  const sedan = getDefaultVehicleClass();
+  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
+  if (servicesTab) {
+    const services = db
+      .prepare("SELECT id, price_kopecks FROM services WHERE tab_id = ?")
+      .all(servicesTab.id) as { id: string; price_kopecks: number }[];
+    const hasPrice = db.prepare(
+      "SELECT 1 as ok FROM service_prices WHERE service_id = ? LIMIT 1"
+    );
+    const insertPrice = db.prepare(
+      "INSERT INTO service_prices (service_id, class_id, price_kopecks) VALUES (?, ?, ?)"
+    );
+    for (const svc of services) {
+      const existing = hasPrice.get(svc.id) as { ok: number } | undefined;
+      if (existing) continue;
+      insertPrice.run(svc.id, sedan.id, svc.price_kopecks);
+    }
+  }
+
+  db.prepare(
+    `UPDATE orders SET vehicle_class_id = ?, vehicle_class_name = ?
+     WHERE status = 'draft' AND (vehicle_class_id IS NULL OR vehicle_class_id = '')`
+  ).run(sedan.id, sedan.name);
 }
 
 export function getCatalogTabBySlug(slug: string): { id: string; slug: string; name: string } | null {
@@ -245,6 +415,8 @@ export function seedIfEmpty() {
       ).run(nanoid(), name, price, sort, servicesTabId);
     }
   }
+
+  ensureVehicleClassesAndPrices();
 
   db.prepare(
     "INSERT INTO discounts (id, name, type, value, active) VALUES (?, ?, ?, ?, 1)"

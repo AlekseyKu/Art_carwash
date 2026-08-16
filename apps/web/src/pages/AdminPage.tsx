@@ -11,11 +11,14 @@ import {
   type CatalogTabDto,
   type ShiftDto,
   type ShiftReportDto,
+  type VehicleClassDto,
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 import { ShiftReportView } from "../components/ShiftReportView";
 
 type FixedTab =
+  | "vehicle-classes"
+  | "service-prices"
   | "discounts"
   | "washers"
   | "terminal"
@@ -40,6 +43,13 @@ function navGroupForTab(t: Tab): NavGroupId {
   return "catalog";
 }
 
+type PriceItemRow = {
+  serviceId: string;
+  name: string;
+  priceKopecks: number | null;
+  priceRub: string;
+};
+
 export function AdminPage() {
   const [token, setToken] = useState(getAdminToken());
   const [code, setCode] = useState("");
@@ -49,6 +59,7 @@ export function AdminPage() {
 
   const [catalogTabs, setCatalogTabs] = useState<CatalogTabDto[]>([]);
   const [services, setServices] = useState<CatalogItemDto[]>([]);
+  const [vehicleClasses, setVehicleClasses] = useState<VehicleClassDto[]>([]);
   const [discounts, setDiscounts] = useState<
     { id: string; name: string; type: string; value: number; active: boolean }[]
   >([]);
@@ -73,6 +84,9 @@ export function AdminPage() {
   } | null>(null);
 
   const [svcForm, setSvcForm] = useState({ name: "", priceRub: "", sortOrder: "0" });
+  const [classForm, setClassForm] = useState({ name: "", description: "", sortOrder: "10" });
+  const [priceClassId, setPriceClassId] = useState<string | null>(null);
+  const [priceItems, setPriceItems] = useState<PriceItemRow[]>([]);
   const [tabForm, setTabForm] = useState({ name: "", sortOrder: "10" });
   const [discForm, setDiscForm] = useState({ name: "", type: "percent", value: "" });
   const [washerForm, setWasherForm] = useState({ name: "", pin: "" });
@@ -108,10 +122,17 @@ export function AdminPage() {
     );
   }, [tab, catalogTabs]);
 
+  const isServicesTab = activeCatalogTab?.slug === "services";
+
   const itemsForActiveTab = useMemo(() => {
     if (!activeCatalogTab) return [];
     return services.filter((s) => s.tabId === activeCatalogTab.id);
   }, [services, activeCatalogTab]);
+
+  const activeVehicleClasses = useMemo(
+    () => vehicleClasses.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder),
+    [vehicleClasses]
+  );
 
   async function login() {
     setError("");
@@ -141,9 +162,10 @@ export function AdminPage() {
 
   async function refresh() {
     if (!token) return;
-    const [tabs, s, d, w, t, sync] = await Promise.all([
+    const [tabs, s, vc, d, w, t, sync] = await Promise.all([
       adminApi.catalogTabs(token),
       adminApi.services(token),
+      adminApi.vehicleClasses(token),
       adminApi.discounts(token),
       adminApi.washers(token),
       adminApi.terminal(token),
@@ -151,6 +173,7 @@ export function AdminPage() {
     ]);
     setCatalogTabs(Array.isArray(tabs) ? tabs : []);
     setServices(Array.isArray(s) ? s : []);
+    setVehicleClasses(Array.isArray(vc) ? vc : []);
     setDiscounts(Array.isArray(d) ? d : []);
     setWashers(Array.isArray(w) ? w : []);
     setTerminal({
@@ -161,6 +184,14 @@ export function AdminPage() {
       notes: String(t?.notes ?? ""),
     });
     if (sync?.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
+
+    const activeVc = vc.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder);
+    const preferred =
+      activeVc.find((c) => c.slug === "sedan") ?? activeVc[0] ?? vc[0] ?? null;
+    setPriceClassId((prev) => {
+      if (prev && vc.some((c) => c.id === prev)) return prev;
+      return preferred?.id ?? null;
+    });
 
     if (tab.startsWith("catalog:")) {
       const key = tab.slice("catalog:".length);
@@ -184,6 +215,22 @@ export function AdminPage() {
     window.addEventListener("art:unauthorized", onUnauthorized);
     return () => window.removeEventListener("art:unauthorized", onUnauthorized);
   }, []);
+
+  async function loadServicePrices(classId: string) {
+    if (!token) return;
+    const res = await adminApi.servicePrices(token, classId);
+    setPriceItems(
+      res.items.map((item) => ({
+        serviceId: item.serviceId,
+        name: item.name,
+        priceKopecks: item.priceKopecks,
+        priceRub:
+          item.priceKopecks === null || item.priceKopecks === undefined
+            ? ""
+            : String(item.priceKopecks / 100),
+      }))
+    );
+  }
 
   useEffect(() => {
     if (!token) return;
@@ -213,6 +260,14 @@ export function AdminPage() {
   }, [token, tab, period, analyticsMode]);
 
   useEffect(() => {
+    if (!token || tab !== "service-prices" || !priceClassId) return;
+    loadServicePrices(priceClassId).catch((e) => {
+      if (isUnauthorized(e)) forceLogout(e.message);
+      else setError(e.message);
+    });
+  }, [token, tab, priceClassId]);
+
+  useEffect(() => {
     if (!token || tab !== "updates") return;
     setUpdateBusy(true);
     adminApi
@@ -230,18 +285,21 @@ export function AdminPage() {
   }, [tab]);
 
   const catalogSubItems = useMemo(() => {
-    const tabs = catalogTabs
+    const sorted = catalogTabs
       .slice()
-      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"))
-      .map((ct) => ({
-        id: `catalog:${ct.slug}` as Tab,
-        label: ct.name,
-      }));
-    return [
-      ...tabs,
-      { id: "catalog-tabs" as Tab, label: "Вкладки" },
-      { id: "discounts" as Tab, label: "Скидки" },
-    ];
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
+    const services = sorted.find((ct) => ct.slug === "services");
+    const products = sorted.find((ct) => ct.slug === "products");
+    const others = sorted.filter((ct) => ct.slug !== "services" && ct.slug !== "products");
+    const items: { id: Tab; label: string }[] = [];
+    if (services) items.push({ id: `catalog:${services.slug}`, label: services.name });
+    items.push({ id: "vehicle-classes", label: "Классификация авто" });
+    items.push({ id: "service-prices", label: "Цены на услуги" });
+    if (products) items.push({ id: `catalog:${products.slug}`, label: products.name });
+    for (const ct of others) items.push({ id: `catalog:${ct.slug}`, label: ct.name });
+    items.push({ id: "catalog-tabs", label: "Вкладки" });
+    items.push({ id: "discounts", label: "Скидки" });
+    return items;
   }, [catalogTabs]);
 
   const subItems = useMemo(() => {
@@ -397,13 +455,15 @@ export function AdminPage() {
           <div className="panel stack">
             <h2 className="h2">{activeCatalogTab.name}</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              Позиции вкладки на кассе. Добавляйте услуги мойки или товары (кофе, чай и т.п.).
+              {isServicesTab
+                ? "Список услуг мойки (без цены). Цены задаются во вкладке «Цены на услуги» по классу авто."
+                : "Позиции вкладки на кассе. Для товаров указывайте название и цену."}
             </p>
             <table className="table">
               <thead>
                 <tr>
                   <th>Название</th>
-                  <th>Цена</th>
+                  {!isServicesTab && <th>Цена</th>}
                   <th>Активна</th>
                   <th />
                 </tr>
@@ -412,7 +472,7 @@ export function AdminPage() {
                 {itemsForActiveTab.map((s) => (
                   <tr key={s.id}>
                     <td>{s.name}</td>
-                    <td>{formatRub(s.priceKopecks)}</td>
+                    {!isServicesTab && <td>{formatRub(s.priceKopecks)}</td>}
                     <td>
                       <button
                         type="button"
@@ -464,13 +524,15 @@ export function AdminPage() {
                 value={svcForm.name}
                 onChange={(name) => setSvcForm((f) => ({ ...f, name }))}
               />
-              <TouchField
-                placeholder="Цена ₽"
-                title="Цена ₽"
-                mode="numeric"
-                value={svcForm.priceRub}
-                onChange={(priceRub) => setSvcForm((f) => ({ ...f, priceRub }))}
-              />
+              {!isServicesTab && (
+                <TouchField
+                  placeholder="Цена ₽"
+                  title="Цена ₽"
+                  mode="numeric"
+                  value={svcForm.priceRub}
+                  onChange={(priceRub) => setSvcForm((f) => ({ ...f, priceRub }))}
+                />
+              )}
               <button
                 type="button"
                 className="btn-primary"
@@ -478,7 +540,9 @@ export function AdminPage() {
                   void adminApi
                     .saveService(token, {
                       name: svcForm.name,
-                      priceKopecks: Math.round(Number(svcForm.priceRub) * 100),
+                      priceKopecks: isServicesTab
+                        ? 0
+                        : Math.round(Number(svcForm.priceRub) * 100),
                       active: true,
                       sortOrder: Number(svcForm.sortOrder) || 0,
                       tabId: activeCatalogTab.id,
@@ -492,6 +556,202 @@ export function AdminPage() {
                 Добавить
               </button>
             </div>
+          </div>
+        )}
+
+        {tab === "vehicle-classes" && (
+          <div className="panel stack">
+            <h2 className="h2">Классификация авто</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Классы автомобилей для кассы. Описание — подсказка с примерами марок.
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Название</th>
+                  <th>Описание</th>
+                  <th>Порядок</th>
+                  <th>Активна</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {vehicleClasses.map((vc) => (
+                  <tr key={vc.id}>
+                    <td>{vc.name}</td>
+                    <td className="muted">{vc.description || "—"}</td>
+                    <td>{vc.sortOrder}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() =>
+                          void adminApi
+                            .saveVehicleClass(
+                              token,
+                              {
+                                name: vc.name,
+                                description: vc.description,
+                                iconKey: vc.iconKey,
+                                sortOrder: vc.sortOrder,
+                                active: !vc.active,
+                              },
+                              vc.id
+                            )
+                            .then(refresh)
+                        }
+                      >
+                        {vc.active ? "Выкл" : "Вкл"}
+                      </button>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-danger"
+                        onClick={() =>
+                          void removeWithConfirm(`Удалить класс «${vc.name}»?`, () =>
+                            adminApi.deleteVehicleClass(token, vc.id)
+                          )
+                        }
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {vehicleClasses.length === 0 && (
+              <p className="muted">Классы ещё не созданы.</p>
+            )}
+            <div className="row">
+              <TouchField
+                placeholder="Название"
+                title="Название класса"
+                mode="text"
+                value={classForm.name}
+                onChange={(name) => setClassForm((f) => ({ ...f, name }))}
+              />
+              <TouchField
+                placeholder="Описание / марки"
+                title="Описание класса"
+                mode="text"
+                value={classForm.description}
+                onChange={(description) => setClassForm((f) => ({ ...f, description }))}
+                style={{ flex: 1, minWidth: "12rem" }}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() =>
+                  void adminApi
+                    .saveVehicleClass(token, {
+                      name: classForm.name,
+                      description: classForm.description,
+                      sortOrder: Number(classForm.sortOrder) || 10,
+                      active: true,
+                    })
+                    .then(() => {
+                      setClassForm({ name: "", description: "", sortOrder: "10" });
+                      return refresh();
+                    })
+                }
+              >
+                Добавить
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "service-prices" && (
+          <div className="panel stack">
+            <h2 className="h2">Цены на услуги</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Цены услуг мойки по классу авто. Пустое поле — услуга скрыта на кассе для этого
+              класса.
+            </p>
+            {activeVehicleClasses.length === 0 ? (
+              <p className="muted">Сначала добавьте активные классы во вкладке «Классификация авто».</p>
+            ) : (
+              <>
+                <div className="catalog-tabs">
+                  {activeVehicleClasses.map((vc) => (
+                    <button
+                      key={vc.id}
+                      type="button"
+                      className={priceClassId === vc.id ? "active" : ""}
+                      onClick={() => setPriceClassId(vc.id)}
+                    >
+                      {vc.name}
+                    </button>
+                  ))}
+                </div>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Услуга</th>
+                      <th>Цена ₽</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {priceItems.map((item) => (
+                      <tr key={item.serviceId}>
+                        <td>{item.name}</td>
+                        <td style={{ maxWidth: "10rem" }}>
+                          <TouchField
+                            placeholder="нет цены"
+                            title={`Цена: ${item.name}`}
+                            mode="numeric"
+                            value={item.priceRub}
+                            onChange={(priceRub) =>
+                              setPriceItems((rows) =>
+                                rows.map((r) =>
+                                  r.serviceId === item.serviceId ? { ...r, priceRub } : r
+                                )
+                              )
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {priceItems.length === 0 && (
+                  <p className="muted">Нет услуг — добавьте их во вкладке «Услуги».</p>
+                )}
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={!priceClassId}
+                  onClick={() => {
+                    if (!priceClassId) return;
+                    void adminApi
+                      .saveServicePrices(token, {
+                        classId: priceClassId,
+                        items: priceItems.map((item) => {
+                          const trimmed = item.priceRub.trim().replace(",", ".");
+                          if (trimmed === "") {
+                            return { serviceId: item.serviceId, priceKopecks: null };
+                          }
+                          const n = Number(trimmed);
+                          return {
+                            serviceId: item.serviceId,
+                            priceKopecks: Number.isFinite(n) ? Math.round(n * 100) : null,
+                          };
+                        }),
+                      })
+                      .then(() => loadServicePrices(priceClassId))
+                      .then(() => setSyncMsg("Цены сохранены"))
+                      .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"));
+                  }}
+                >
+                  Сохранить цены
+                </button>
+                {syncMsg && tab === "service-prices" && (
+                  <p className="muted">{syncMsg}</p>
+                )}
+              </>
+            )}
           </div>
         )}
 

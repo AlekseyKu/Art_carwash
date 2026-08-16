@@ -543,7 +543,91 @@ a.topbar-pill {
 .pos-toolbar {
   display: flex;
   align-items: center;
+  gap: 0.75rem;
   margin-bottom: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.vehicle-class-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.vehicle-class-btn {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  padding: 0.3rem;
+  border-radius: 14px;
+  border: 2px solid var(--brand-silver-soft);
+  background: #1a1a1a;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.vehicle-class-btn.active {
+  border-color: var(--brand-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 35%, transparent);
+}
+
+.vehicle-class-btn:active {
+  transform: scale(0.96);
+}
+
+.vehicle-class-icon {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.vehicle-class-fallback {
+  color: #fff;
+  font-weight: 700;
+}
+
+.vehicle-class-info-btn {
+  margin-left: 0.15rem;
+}
+
+.class-info-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.class-info-item {
+  display: grid;
+  grid-template-columns: 48px 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.class-info-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.class-info-item img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  background: #1a1a1a;
+  border-radius: 10px;
+  padding: 0.25rem;
+}
+
+.class-info-item p {
+  margin: 0.25rem 0 0;
+  font-size: 0.9rem;
 }
 
 .icon-btn {

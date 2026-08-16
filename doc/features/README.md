@@ -7,7 +7,7 @@
 | [01-entry-camera-anpr.md](01-entry-camera-anpr.md) | Камера на въезде + распознавание госномера → клиент на кассе | backlog (ждём камеру) |
 | [02-windows-exe-packaging.md](02-windows-exe-packaging.md) | Сборка в .exe / kiosk для сенсорного Windows мини-ПК | test-ready |
 | [03-backlog-ideas.md](03-backlog-ideas.md) | Бэклог идей: мойка / админ / касса (+ кофе, акции, подсказки) | backlog |
-| [04-vehicle-classes-service-prices.md](04-vehicle-classes-service-prices.md) | Классификация авто + цены услуг по классу | ready-for-dev |
+| [04-vehicle-classes-service-prices.md](04-vehicle-classes-service-prices.md) | Классификация авто + цены услуг по классу | implemented |
 
 ## Как добавлять
 

@@ -9,10 +9,12 @@ import {
   type OrderDto,
   type ShiftDto,
   type ShiftReportDto,
+  type VehicleClassDto,
 } from "../api";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 import { ShiftReportView } from "../components/ShiftReportView";
 import { WindowControls } from "../components/WindowControls";
+import { vehicleClassIconSrc } from "../vehicleClassIcons";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
 
@@ -41,6 +43,7 @@ export function PosPage() {
   } | null>(null);
   const [recentKey, setRecentKey] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
+  const [classInfoOpen, setClassInfoOpen] = useState(false);
   const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
   const [shift, setShift] = useState<ShiftDto | null>(null);
   const [shiftBusy, setShiftBusy] = useState(false);
@@ -48,6 +51,19 @@ export function PosPage() {
   const [rolloverPrompt, setRolloverPrompt] = useState(false);
   const [closeReport, setCloseReport] = useState<ShiftReportDto | null>(null);
   const [shiftConfirm, setShiftConfirm] = useState<"open" | "close" | null>(null);
+  const [vehicleClassId, setVehicleClassId] = useState<string | null>(null);
+
+  const vehicleClasses = catalog?.vehicleClasses ?? [];
+
+  const selectedClass: VehicleClassDto | null = useMemo(() => {
+    if (!vehicleClasses.length) return null;
+    return (
+      vehicleClasses.find((c) => c.id === vehicleClassId) ??
+      vehicleClasses.find((c) => c.slug === "sedan") ??
+      vehicleClasses[0] ??
+      null
+    );
+  }, [vehicleClasses, vehicleClassId]);
 
   function forceLogout(message?: string) {
     setWasherToken(null);
@@ -59,6 +75,8 @@ export function PosPage() {
     setPayOpen(false);
     setPendingPay(null);
     setRecentOpen(false);
+    setClassInfoOpen(false);
+    setVehicleClassId(null);
     setWasherName("");
     setShift(null);
     setOpenShiftPrompt(false);
@@ -106,17 +124,29 @@ export function PosPage() {
   useEffect(() => {
     if (!token) return;
     api
-      .catalog()
+      .catalog(vehicleClassId ?? undefined)
+      .then((c) => {
       .then((c) => {
         const tabs = c.tabs ?? [];
-        setCatalog({ ...c, tabs, services: c.services ?? [], discounts: c.discounts ?? [] });
+        setCatalog({
+          ...c,
+          tabs,
+          services: c.services ?? [],
+          discounts: c.discounts ?? [],
+          vehicleClasses: c.vehicleClasses ?? [],
+        });
         setCatalogTabId((prev) => prev ?? tabs[0]?.id ?? null);
+        if (!vehicleClassId) {
+          const classes = c.vehicleClasses ?? [];
+          const def = classes.find((x) => x.slug === "sedan") ?? classes[0];
+          if (def) setVehicleClassId(def.id);
+        }
       })
       .catch((e) => {
         if (isUnauthorized(e)) forceLogout(e.message);
         else setError(e.message);
       });
-  }, [token]);
+  }, [token, vehicleClassId]);
 
   const catalogItems = useMemo(() => {
     if (!catalog) return [];
@@ -137,6 +167,7 @@ export function PosPage() {
         for (const i of o.items ?? []) map[i.serviceId] = i.qty;
         setQty(map);
         setDiscountId(o.discountId);
+        if (o.vehicleClassId) setVehicleClassId(o.vehicleClassId);
       })
       .catch((e) => {
         if (isUnauthorized(e)) forceLogout(e.message);
@@ -151,6 +182,15 @@ export function PosPage() {
     if (!catalog) return 0;
     return catalog.services.reduce((s, svc) => s + svc.priceKopecks * (qty[svc.id] ?? 0), 0);
   }, [catalog, qty]);
+
+  function applyOrder(o: OrderDto) {
+    setOrder(o);
+    const map: Record<string, number> = {};
+    for (const i of o.items ?? []) map[i.serviceId] = i.qty;
+    setQty(map);
+    setDiscountId(o.discountId);
+    if (o.vehicleClassId) setVehicleClassId(o.vehicleClassId);
+  }
 
   async function submitPin() {
     setError("");
@@ -172,13 +212,25 @@ export function PosPage() {
       .filter(([, q]) => q > 0)
       .map(([serviceId, q]) => ({ serviceId, qty: q }));
     const updated = await api.saveOrder(order.id, { items, discountId: nextDisc }, token);
-    setOrder(updated);
+    applyOrder(updated);
   }
 
   function toggleService(id: string) {
     const next = { ...qty, [id]: qty[id] ? 0 : 1 };
     setQty(next);
     void persist(next, discountId);
+  }
+
+  async function changeVehicleClass(classId: string) {
+    if (!token || !order || classId === vehicleClassId) return;
+    setError("");
+    try {
+      const updated = await api.setVehicleClass(order.id, classId, token);
+      applyOrder(updated);
+      setVehicleClassId(classId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось сменить класс");
+    }
   }
 
   async function logout() {
@@ -319,7 +371,7 @@ export function PosPage() {
         setPayOpen(false);
         setPendingPay(null);
         const fresh = await api.draft(DRAFT_POST_ID, token);
-        setOrder(fresh);
+        applyOrder(fresh);
         setQty({});
         setDiscountId(null);
         setRecentKey((k) => k + 1);
@@ -353,7 +405,7 @@ export function PosPage() {
         setPayOpen(false);
         setPendingPay(null);
         const fresh = await api.draft(DRAFT_POST_ID, token);
-        setOrder(fresh);
+        applyOrder(fresh);
         setQty({});
         setDiscountId(null);
         setRecentKey((k) => k + 1);
@@ -418,6 +470,7 @@ export function PosPage() {
           <div className="brand">{BRAND_NAME}</div>
           <div className="muted" style={{ fontSize: "0.85rem" }}>
             {washerName || "Мойщик"} · заказ #{order?.number ?? "—"}
+            {selectedClass ? ` · ${selectedClass.name}` : ""}
           </div>
         </div>
         <div className="topbar-actions">
@@ -471,6 +524,47 @@ export function PosPage() {
               />
             </svg>
           </button>
+
+          <div className="vehicle-class-row" role="group" aria-label="Класс автомобиля">
+            {vehicleClasses.map((c) => {
+              const src = vehicleClassIconSrc(c.iconKey || c.slug);
+              const active = selectedClass?.id === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  className={`vehicle-class-btn${active ? " active" : ""}`}
+                  aria-label={c.name}
+                  aria-pressed={active}
+                  title={c.name}
+                  onClick={() => void changeVehicleClass(c.id)}
+                >
+                  {src ? (
+                    <img src={src} alt="" className="vehicle-class-icon" />
+                  ) : (
+                    <span className="vehicle-class-fallback">{c.name.slice(0, 1)}</span>
+                  )}
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              className="icon-btn vehicle-class-info-btn"
+              aria-label="Описание классов авто"
+              title="Описание классов"
+              onClick={() => setClassInfoOpen(true)}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="2" />
+                <path
+                  d="M12 10.5v5.5M12 7.5h.01"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div className="pos-layout">
@@ -708,6 +802,52 @@ export function PosPage() {
               Готово
             </button>
           </div>
+        </div>
+      )}
+
+      {classInfoOpen && (
+        <div className="drawer-backdrop" onClick={() => setClassInfoOpen(false)}>
+          <aside
+            className="drawer-panel drawer-panel-right"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Классификация авто"
+          >
+            <div className="drawer-header">
+              <h2 className="h2" style={{ margin: 0 }}>
+                Классификация авто
+              </h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Закрыть"
+                onClick={() => setClassInfoOpen(false)}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M6 6l12 12M18 6L6 18"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
+            <ul className="class-info-list">
+              {vehicleClasses.map((c) => {
+                const src = vehicleClassIconSrc(c.iconKey || c.slug);
+                return (
+                  <li key={c.id} className="class-info-item">
+                    {src ? <img src={src} alt="" /> : <span />}
+                    <div>
+                      <strong>{c.name}</strong>
+                      <p className="muted">{c.description || "—"}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
         </div>
       )}
 

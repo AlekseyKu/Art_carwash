@@ -1,6 +1,11 @@
 import { calcDiscountKopecks, type Discount, type PaymentMethod } from "@art/shared";
 import { nanoid } from "nanoid";
-import { db } from "./db.js";
+import {
+  db,
+  getDefaultVehicleClass,
+  resolveServicePrice,
+  type VehicleClassRow,
+} from "./db.js";
 import { getOpenShift, isShiftStale } from "./shifts.js";
 import { enqueueOutbox } from "./sync.js";
 
@@ -19,6 +24,8 @@ type OrderRow = {
   created_at: string;
   paid_at: string | null;
   updated_at: string;
+  vehicle_class_id: string | null;
+  vehicle_class_name: string | null;
 };
 
 function mapOrder(row: OrderRow) {
@@ -48,6 +55,8 @@ function mapOrder(row: OrderRow) {
     createdAt: row.created_at,
     paidAt: row.paid_at,
     updatedAt: row.updated_at,
+    vehicleClassId: row.vehicle_class_id,
+    vehicleClassName: row.vehicle_class_name,
     items: items.map((i) => ({
       id: i.id,
       orderId: i.order_id,
@@ -114,6 +123,19 @@ function recalc(orderId: string) {
   ).run(subtotal, discountKopecks, total, now, orderId);
 }
 
+function ensureOrderHasVehicleClass(order: OrderRow): OrderRow {
+  if (order.vehicle_class_id) return order;
+  const sedan = getDefaultVehicleClass();
+  const now = new Date().toISOString();
+  db.prepare(
+    "UPDATE orders SET vehicle_class_id = ?, vehicle_class_name = ?, updated_at = ? WHERE id = ?"
+  ).run(sedan.id, sedan.name, now, order.id);
+  order.vehicle_class_id = sedan.id;
+  order.vehicle_class_name = sedan.name;
+  order.updated_at = now;
+  return order;
+}
+
 export function getOrCreateDraft(postId: number, washerId: string) {
   const existing = db
     .prepare(
@@ -130,17 +152,19 @@ export function getOrCreateDraft(postId: number, washerId: string) {
       );
       existing.washer_id = washerId;
     }
-    return mapOrder(existing);
+    return mapOrder(ensureOrderHasVehicleClass(existing));
   }
 
   const now = new Date().toISOString();
   const id = nanoid();
   const number = nextOrderNumber();
+  const sedan = getDefaultVehicleClass();
   db.prepare(
     `INSERT INTO orders (id, number, post_id, washer_id, client_id, discount_id, status,
-      payment_method, subtotal_kopecks, discount_kopecks, total_kopecks, created_at, paid_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, NULL, 'draft', NULL, 0, 0, 0, ?, NULL, ?)`
-  ).run(id, number, postId, washerId, now, now);
+      payment_method, subtotal_kopecks, discount_kopecks, total_kopecks, created_at, paid_at, updated_at,
+      vehicle_class_id, vehicle_class_name)
+     VALUES (?, ?, ?, ?, NULL, NULL, 'draft', NULL, 0, 0, 0, ?, NULL, ?, ?, ?)`
+  ).run(id, number, postId, washerId, now, now, sedan.id, sedan.name);
   return mapOrder(db.prepare("SELECT * FROM orders WHERE id = ?").get(id) as OrderRow);
 }
 
@@ -156,23 +180,57 @@ export function setOrderItems(
 ) {
   const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as OrderRow | undefined;
   if (!order || order.status !== "draft") throw new Error("Заказ нельзя изменить");
+  ensureOrderHasVehicleClass(order);
 
   db.prepare("DELETE FROM order_items WHERE order_id = ?").run(orderId);
   for (const item of items) {
     if (item.qty <= 0) continue;
     const svc = db
-      .prepare("SELECT id, name, price_kopecks FROM services WHERE id = ? AND active = 1")
-      .get(item.serviceId) as { id: string; name: string; price_kopecks: number } | undefined;
+      .prepare("SELECT id, name FROM services WHERE id = ? AND active = 1")
+      .get(item.serviceId) as { id: string; name: string } | undefined;
     if (!svc) continue;
+    const price = resolveServicePrice(svc.id, order.vehicle_class_id);
+    if (price === null) continue;
     db.prepare(
       "INSERT INTO order_items (id, order_id, service_id, name_snapshot, price_kopecks, qty) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(nanoid(), orderId, svc.id, svc.name, svc.price_kopecks, item.qty);
+    ).run(nanoid(), orderId, svc.id, svc.name, price, item.qty);
   }
   db.prepare("UPDATE orders SET discount_id = ?, updated_at = ? WHERE id = ?").run(
     discountId,
     new Date().toISOString(),
     orderId
   );
+  recalc(orderId);
+  return getOrder(orderId)!;
+}
+
+export function setOrderVehicleClass(orderId: string, classId: string) {
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as OrderRow | undefined;
+  if (!order || order.status !== "draft") throw new Error("Заказ нельзя изменить");
+
+  const vc = db.prepare("SELECT * FROM vehicle_classes WHERE id = ? AND active = 1").get(classId) as
+    | VehicleClassRow
+    | undefined;
+  if (!vc) throw new Error("Класс автомобиля не найден");
+
+  const now = new Date().toISOString();
+  db.prepare(
+    "UPDATE orders SET vehicle_class_id = ?, vehicle_class_name = ?, updated_at = ? WHERE id = ?"
+  ).run(vc.id, vc.name, now, orderId);
+
+  const items = db
+    .prepare("SELECT id, service_id, qty FROM order_items WHERE order_id = ?")
+    .all(orderId) as { id: string; service_id: string; qty: number }[];
+
+  for (const item of items) {
+    const price = resolveServicePrice(item.service_id, vc.id);
+    if (price === null) {
+      db.prepare("DELETE FROM order_items WHERE id = ?").run(item.id);
+    } else {
+      db.prepare("UPDATE order_items SET price_kopecks = ? WHERE id = ?").run(price, item.id);
+    }
+  }
+
   recalc(orderId);
   return getOrder(orderId)!;
 }

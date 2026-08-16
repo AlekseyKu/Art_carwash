@@ -25,11 +25,15 @@ import {
 import {
   db,
   getCatalogTabBySlug,
+  getDefaultVehicleClass,
   getSetting,
+  listVehicleClasses,
   migrate,
+  resolveServicePrice,
   seedIfEmpty,
   setSetting,
   TAB_SLUG_SERVICES,
+  type VehicleClassRow,
 } from "./db.js";
 import {
   analytics,
@@ -40,6 +44,7 @@ import {
   markAwaitingPayment,
   markPaid,
   setOrderItems,
+  setOrderVehicleClass,
 } from "./orders.js";
 import { isOnline, providers } from "./payments.js";
 import { flushOutbox, startSyncLoop } from "./sync.js";
@@ -177,6 +182,18 @@ function mapTabRow(t: {
   };
 }
 
+function mapVehicleClassRow(v: VehicleClassRow) {
+  return {
+    id: v.id,
+    slug: v.slug,
+    name: v.name,
+    description: v.description,
+    iconKey: v.icon_key,
+    sortOrder: v.sort_order,
+    active: !!v.active,
+  };
+}
+
 function slugifyTabName(name: string): string {
   const base = name
     .trim()
@@ -187,7 +204,20 @@ function slugifyTabName(name: string): string {
   return base || `tab-${nanoid(6)}`;
 }
 
-app.get("/api/catalog", async () => {
+function slugifyClassName(name: string): string {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-zа-яё0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 40);
+  return base || `class-${nanoid(6)}`;
+}
+
+app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
+  const vehicleClasses = listVehicleClasses(true);
+  const classId = req.query.classId || getDefaultVehicleClass().id;
+
   const tabs = db
     .prepare(
       "SELECT * FROM catalog_tabs WHERE active = 1 ORDER BY sort_order, name"
@@ -199,6 +229,8 @@ app.get("/api/catalog", async () => {
     sort_order: number;
     active: number;
   }[];
+  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
+
   const services = db
     .prepare("SELECT * FROM services WHERE active = 1 ORDER BY sort_order, name")
     .all() as {
@@ -209,6 +241,23 @@ app.get("/api/catalog", async () => {
     sort_order: number;
     tab_id: string | null;
   }[];
+
+  const catalogServices = [];
+  for (const s of services) {
+    const isServiceTab = servicesTab && s.tab_id === servicesTab.id;
+    if (isServiceTab) {
+      const price = resolveServicePrice(s.id, classId);
+      if (price === null) continue;
+      catalogServices.push({
+        ...mapServiceRow(s),
+        priceKopecks: price,
+      });
+      continue;
+    }
+    // Товары и прочие вкладки — цена из services.price_kopecks
+    catalogServices.push(mapServiceRow(s));
+  }
+
   const discounts = db
     .prepare("SELECT * FROM discounts WHERE active = 1")
     .all() as {
@@ -219,8 +268,9 @@ app.get("/api/catalog", async () => {
     active: number;
   }[];
   return {
+    vehicleClasses: vehicleClasses.map(mapVehicleClassRow),
     tabs: tabs.map(mapTabRow),
-    services: services.map(mapServiceRow),
+    services: catalogServices,
     discounts: discounts.map((d) => ({
       id: d.id,
       name: d.name,
@@ -319,6 +369,15 @@ app.put<{
   requireWasher(req);
   return setOrderItems(req.params.id, req.body.items ?? [], req.body.discountId ?? null);
 });
+
+app.put<{ Params: { id: string }; Body: { classId: string } }>(
+  "/api/orders/:id/vehicle-class",
+  async (req) => {
+    requireWasher(req);
+    if (!req.body?.classId) throw new Error("classId обязателен");
+    return setOrderVehicleClass(req.params.id, req.body.classId);
+  }
+);
 
 app.post<{ Params: { id: string } }>("/api/orders/:id/checkout", async (req) => {
   requireWasher(req);
@@ -472,7 +531,7 @@ app.get("/api/admin/services", async (req) => {
 app.post<{
   Body: {
     name: string;
-    priceKopecks: number;
+    priceKopecks?: number;
     active?: boolean;
     sortOrder?: number;
     tabId?: string;
@@ -483,12 +542,14 @@ app.post<{
   const tabId =
     req.body.tabId || getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id || "";
   if (!tabId) throw new Error("Не найдена вкладка каталога");
+  // Для вкладки «Услуги» цена на кассе из service_prices; в services допускается 0
+  const priceKopecks = req.body.priceKopecks ?? 0;
   db.prepare(
     "INSERT INTO services (id, name, price_kopecks, active, sort_order, tab_id) VALUES (?, ?, ?, ?, ?, ?)"
   ).run(
     id,
     req.body.name,
-    req.body.priceKopecks,
+    priceKopecks,
     req.body.active === false ? 0 : 1,
     req.body.sortOrder ?? 0,
     tabId
@@ -530,8 +591,161 @@ app.put<{
 
 app.delete<{ Params: { id: string } }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
+  db.prepare("DELETE FROM service_prices WHERE service_id = ?").run(req.params.id);
   const result = db.prepare("DELETE FROM services WHERE id = ?").run(req.params.id);
   if (result.changes === 0) throw new Error("Позиция не найдена");
+  return { ok: true };
+});
+
+app.get("/api/admin/vehicle-classes", async (req) => {
+  requireAdmin(req);
+  return listVehicleClasses(false).map(mapVehicleClassRow);
+});
+
+app.post<{
+  Body: {
+    name: string;
+    description?: string;
+    slug?: string;
+    iconKey?: string;
+    sortOrder?: number;
+    active?: boolean;
+  };
+}>("/api/admin/vehicle-classes", async (req) => {
+  requireAdmin(req);
+  const name = req.body.name?.trim();
+  if (!name) throw new Error("Название класса обязательно");
+  let slug = (req.body.slug?.trim() || slugifyClassName(name)).toLowerCase();
+  const taken = db
+    .prepare("SELECT id FROM vehicle_classes WHERE slug = ?")
+    .get(slug) as { id: string } | undefined;
+  if (taken) slug = `${slug}-${nanoid(4)}`;
+  const id = nanoid();
+  const iconKey = (req.body.iconKey?.trim() || slug).toLowerCase();
+  db.prepare(
+    `INSERT INTO vehicle_classes (id, slug, name, description, icon_key, sort_order, active)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    slug,
+    name,
+    req.body.description?.trim() ?? "",
+    iconKey,
+    req.body.sortOrder ?? 100,
+    req.body.active === false ? 0 : 1
+  );
+  return { id, slug };
+});
+
+app.put<{
+  Params: { id: string };
+  Body: {
+    name: string;
+    description?: string;
+    iconKey?: string;
+    sortOrder: number;
+    active: boolean;
+  };
+}>("/api/admin/vehicle-classes/:id", async (req) => {
+  requireAdmin(req);
+  const existing = db
+    .prepare("SELECT * FROM vehicle_classes WHERE id = ?")
+    .get(req.params.id) as VehicleClassRow | undefined;
+  if (!existing) throw new Error("Класс не найден");
+  db.prepare(
+    `UPDATE vehicle_classes SET name = ?, description = ?, icon_key = ?, sort_order = ?, active = ?
+     WHERE id = ?`
+  ).run(
+    req.body.name,
+    req.body.description ?? existing.description,
+    req.body.iconKey ?? existing.icon_key,
+    req.body.sortOrder,
+    req.body.active ? 1 : 0,
+    req.params.id
+  );
+  return { ok: true };
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/vehicle-classes/:id", async (req) => {
+  requireAdmin(req);
+  const existing = db
+    .prepare("SELECT * FROM vehicle_classes WHERE id = ?")
+    .get(req.params.id) as VehicleClassRow | undefined;
+  if (!existing) throw new Error("Класс не найден");
+  const priceCount = db
+    .prepare("SELECT COUNT(*) as c FROM service_prices WHERE class_id = ?")
+    .get(req.params.id) as { c: number };
+  if (priceCount.c > 0) {
+    db.prepare("UPDATE vehicle_classes SET active = 0 WHERE id = ?").run(req.params.id);
+    return { ok: true, soft: true };
+  }
+  db.prepare("DELETE FROM vehicle_classes WHERE id = ?").run(req.params.id);
+  return { ok: true, soft: false };
+});
+
+app.get<{ Querystring: { classId?: string } }>("/api/admin/service-prices", async (req) => {
+  requireAdmin(req);
+  const classId = req.query.classId || getDefaultVehicleClass().id;
+  const vc = db.prepare("SELECT id FROM vehicle_classes WHERE id = ?").get(classId) as
+    | { id: string }
+    | undefined;
+  if (!vc) throw new Error("Класс не найден");
+
+  const servicesTab = getCatalogTabBySlug(TAB_SLUG_SERVICES);
+  if (!servicesTab) throw new Error("Вкладка Услуги не найдена");
+
+  const services = db
+    .prepare(
+      "SELECT id, name FROM services WHERE tab_id = ? ORDER BY sort_order, name"
+    )
+    .all(servicesTab.id) as { id: string; name: string }[];
+
+  const priceStmt = db.prepare(
+    "SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?"
+  );
+
+  return {
+    classId,
+    items: services.map((s) => {
+      const row = priceStmt.get(s.id, classId) as { price_kopecks: number } | undefined;
+      return {
+        serviceId: s.id,
+        name: s.name,
+        priceKopecks: row ? row.price_kopecks : null,
+      };
+    }),
+  };
+});
+
+app.put<{
+  Body: {
+    classId: string;
+    items: { serviceId: string; priceKopecks: number | null }[];
+  };
+}>("/api/admin/service-prices", async (req) => {
+  requireAdmin(req);
+  const classId = req.body.classId;
+  if (!classId) throw new Error("classId обязателен");
+  const vc = db.prepare("SELECT id FROM vehicle_classes WHERE id = ?").get(classId) as
+    | { id: string }
+    | undefined;
+  if (!vc) throw new Error("Класс не найден");
+
+  const upsert = db.prepare(
+    `INSERT INTO service_prices (service_id, class_id, price_kopecks) VALUES (?, ?, ?)
+     ON CONFLICT(service_id, class_id) DO UPDATE SET price_kopecks = excluded.price_kopecks`
+  );
+  const del = db.prepare(
+    "DELETE FROM service_prices WHERE service_id = ? AND class_id = ?"
+  );
+
+  for (const item of req.body.items ?? []) {
+    if (item.priceKopecks === null || item.priceKopecks === undefined) {
+      del.run(item.serviceId, classId);
+    } else {
+      upsert.run(item.serviceId, classId, item.priceKopecks);
+    }
+  }
   return { ok: true };
 });
 
