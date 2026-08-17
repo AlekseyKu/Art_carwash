@@ -33,6 +33,40 @@ type NavGroupId = "analytics" | "catalog" | "settings" | "admin";
 type AnalyticsMode = "period" | "shifts" | "by-washer";
 type WasherAnalyticsPeriod = "shift" | "week" | "month" | "range";
 
+function formatAnalyticsPeriodLabel(
+  fromIso: string,
+  toIso: string,
+  mode: WasherAnalyticsPeriod
+) {
+  const from = new Date(fromIso);
+  const to = new Date(toIso);
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return `${fromIso} — ${toIso}`;
+  }
+  const dateFmt = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+  const dateTimeFmt = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (mode === "shift") {
+    return `${dateTimeFmt.format(from)} — ${dateTimeFmt.format(to)}`;
+  }
+  const fromD = dateFmt.format(from);
+  const toD = dateFmt.format(to);
+  if (mode === "week") return `неделя ${fromD} — ${toD}`;
+  if (mode === "month") return `месяц ${fromD} — ${toD}`;
+  return `${fromD} — ${toD}`;
+}
+
 const MAIN_NAV: { id: NavGroupId; label: string }[] = [
   { id: "analytics", label: "Аналитика" },
   { id: "catalog", label: "Товары и услуги" },
@@ -641,6 +675,33 @@ export function AdminPage() {
         </div>
       </header>
 
+      <div className="admin-menu">
+        <nav className="admin-nav" aria-label="Разделы админки">
+          {MAIN_NAV.map((g) => (
+            <button
+              key={g.id}
+              type="button"
+              className={`topbar-pill${navGroup === g.id ? " active" : ""}`}
+              onClick={() => selectNavGroup(g.id)}
+            >
+              {g.label}
+            </button>
+          ))}
+        </nav>
+        <nav className="admin-subnav" aria-label="Подменю">
+          {subItems.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`topbar-pill${isSubActive(item) ? " active" : ""}`}
+              onClick={() => selectSubItem(item)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
       <main className="content">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
         {pendingLeave && (
@@ -705,30 +766,6 @@ export function AdminPage() {
             </div>
           </div>
         )}
-        <nav className="admin-nav" aria-label="Разделы админки">
-          {MAIN_NAV.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              className={`topbar-pill${navGroup === g.id ? " active" : ""}`}
-              onClick={() => selectNavGroup(g.id)}
-            >
-              {g.label}
-            </button>
-          ))}
-        </nav>
-        <nav className="admin-subnav" aria-label="Подменю">
-          {subItems.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`topbar-pill${isSubActive(item) ? " active" : ""}`}
-              onClick={() => selectSubItem(item)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
 
         {activeCatalogTab && (
           <div className="panel stack">
@@ -1876,8 +1913,15 @@ export function AdminPage() {
                   )}
                 {washerAnalytics && (
                   <>
-                    <p className="muted" style={{ marginTop: 0 }}>
-                      Период: {washerAnalytics.from} — {washerAnalytics.to}
+                    <p style={{ marginTop: 0 }}>
+                      <span className="muted">Период: </span>
+                      <strong>
+                        {formatAnalyticsPeriodLabel(
+                          washerAnalytics.from,
+                          washerAnalytics.to,
+                          washerAnalyticsPeriod
+                        )}
+                      </strong>
                     </p>
                     <table className="table">
                       <thead>
@@ -1886,6 +1930,7 @@ export function AdminPage() {
                           <th>Заказов</th>
                           <th>Выручка</th>
                           <th>Зарплата %</th>
+                          <th>Зарплата, руб</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1895,6 +1940,7 @@ export function AdminPage() {
                             <td>{w.orderCount}</td>
                             <td>{formatRub(w.revenueKopecks)}</td>
                             <td>{w.salaryPercent}%</td>
+                            <td>{formatRub(w.salaryKopecks)}</td>
                           </tr>
                         ))}
                       </tbody>

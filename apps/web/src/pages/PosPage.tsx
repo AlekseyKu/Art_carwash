@@ -711,7 +711,7 @@ export function PosPage() {
         </div>
       </header>
 
-      <main className="content content-wide">
+      <main className="content content-wide pos-main">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
 
         <div className="pos-toolbar">
