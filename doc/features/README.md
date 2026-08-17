@@ -8,6 +8,7 @@
 | [02-windows-exe-packaging.md](02-windows-exe-packaging.md) | Сборка в .exe / kiosk для сенсорного Windows мини-ПК | test-ready |
 | [03-backlog-ideas.md](03-backlog-ideas.md) | Бэклог идей: мойка / админ / касса (+ кофе, акции, подсказки) | backlog |
 | [04-vehicle-classes-service-prices.md](04-vehicle-classes-service-prices.md) | Классификация авто + цены услуг по классу | implemented |
+| [05-operators-staff-order-ux.md](05-operators-staff-order-ux.md) | Операторы/мойщики, коэффициент, UX заказа, аналитика, OSK | ready-for-dev |
 
 ## Как добавлять
 
