@@ -307,49 +307,46 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
       updatesDir: tempDir,
       logPath: updateLogPath(),
     };
-    let releases;
+    // Список /releases иногда отдаёт [] (баг/особенность API), при этом
+    // /releases/latest и /releases/tags/* работают — не выходим раньше времени.
+    let releases = [];
+    let listError = null;
     try {
-      releases = await httpGetJson(
+      const listed = await httpGetJson(
         `https://api.github.com/repos/${repo}/releases?per_page=40`,
         githubHeaders()
       );
+      if (Array.isArray(listed)) releases = listed;
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      const needsToken =
-        !hasGithubToken && /\bGitHub HTTP (401|403|404)\b/.test(msg);
-      return {
-        ok: false,
-        updateAvailable: false,
-        currentVersion: currentVersion(),
-        latestVersion: null,
-        ...baseMeta,
-        message: needsToken
-          ? "Не удалось прочитать Releases (HTTP 401/403/404). Если репозиторий приватный — сохраните GitHub token (Contents: Read) ниже."
-          : msg,
-      };
-    }
-    if (!Array.isArray(releases) || releases.length === 0) {
-      return {
-        ok: true,
-        updateAvailable: false,
-        currentVersion: currentVersion(),
-        latestVersion: null,
-        ...baseMeta,
-        message: "На GitHub пока нет Releases",
-      };
+      listError = e instanceof Error ? e.message : String(e);
     }
 
-    // /releases/latest + полный список: GitHub сортирует не по semver (0.2.9 > 0.2.12 как строки).
     let latestRelease = null;
     try {
       latestRelease = await httpGetJson(
         `https://api.github.com/repos/${repo}/releases/latest`,
         githubHeaders()
       );
-    } catch {
-      latestRelease = null;
+    } catch (e) {
+      if (!releases.length) {
+        const msg = e instanceof Error ? e.message : String(e);
+        const failMsg = listError || msg;
+        const needsToken =
+          !hasGithubToken && /\bGitHub HTTP (401|403|404)\b/.test(failMsg);
+        return {
+          ok: false,
+          updateAvailable: false,
+          currentVersion: currentVersion(),
+          latestVersion: null,
+          ...baseMeta,
+          message: needsToken
+            ? "Не удалось прочитать Releases (HTTP 401/403/404). Если репозиторий приватный — сохраните GitHub token (Contents: Read) ниже."
+            : failMsg,
+        };
+      }
     }
 
+    // /releases/latest + список: GitHub сортирует не по semver (0.2.9 > 0.2.12 как строки).
     const candidates = [];
     if (latestRelease && releaseHasUpdateZip(latestRelease)) candidates.push(latestRelease);
     for (const r of releases) {
@@ -373,7 +370,10 @@ function createUpdater({ resourcesDir, currentVersionPath, tempDir, configPath }
         currentVersion: currentVersion(),
         latestVersion: null,
         ...baseMeta,
-        message: "Нет Release с файлом art-pos-update.zip",
+        message:
+          !releases.length && !latestRelease
+            ? "На GitHub пока нет Releases"
+            : "Нет Release с файлом art-pos-update.zip",
       };
     }
     const tag = release.tag_name || "";
