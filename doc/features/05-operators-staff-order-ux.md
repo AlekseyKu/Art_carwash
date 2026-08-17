@@ -1,6 +1,6 @@
 # Фича 05: Операторы / мойщики, коэффициент, UX заказа и аналитика
 
-**Статус:** ready-for-dev  
+**Статус:** implemented (локально)  
 **Релиз-кандидат:** POS **0.3.0**  
 **Связано:** `AdminPage`, `PosPage`, `OnScreenKeyboard`, `orders` / `washers` / analytics в `local-api`
 

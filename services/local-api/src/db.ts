@@ -168,6 +168,14 @@ export function migrate() {
   if (!tableColumns("services").has("description")) {
     db.exec("ALTER TABLE services ADD COLUMN description TEXT NOT NULL DEFAULT ''");
   }
+  if (!tableColumns("services").has("coefficient_enabled")) {
+    db.exec("ALTER TABLE services ADD COLUMN coefficient_enabled INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!tableColumns("services").has("coefficient_step_kopecks")) {
+    db.exec(
+      "ALTER TABLE services ADD COLUMN coefficient_step_kopecks INTEGER NOT NULL DEFAULT 5000"
+    );
+  }
 
   const orderCols = tableColumns("orders");
   if (!orderCols.has("shift_id")) {
@@ -179,6 +187,41 @@ export function migrate() {
   if (!orderCols.has("vehicle_class_name")) {
     db.exec("ALTER TABLE orders ADD COLUMN vehicle_class_name TEXT");
   }
+
+  const itemCols = tableColumns("order_items");
+  if (!itemCols.has("is_manual")) {
+    db.exec("ALTER TABLE order_items ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!itemCols.has("base_price_kopecks")) {
+    db.exec("ALTER TABLE order_items ADD COLUMN base_price_kopecks INTEGER");
+  }
+  if (!itemCols.has("coefficient_extra_kopecks")) {
+    db.exec(
+      "ALTER TABLE order_items ADD COLUMN coefficient_extra_kopecks INTEGER NOT NULL DEFAULT 0"
+    );
+  }
+  // Ручные позиции: service_id может быть пустым (SQLite NOT NULL уже стоит — пишем '')
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS staff_washers (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      salary_percent INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS order_staff_washers (
+      order_id TEXT NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      staff_washer_id TEXT NOT NULL REFERENCES staff_washers(id) ON DELETE CASCADE,
+      PRIMARY KEY (order_id, staff_washer_id)
+    );
+  `);
+
+  // Заполнить base_price из price, если ещё пусто
+  db.exec(
+    `UPDATE order_items SET base_price_kopecks = price_kopecks
+     WHERE base_price_kopecks IS NULL`
+  );
 
   ensureDefaultCatalogTabs();
   ensureVehicleClassesAndPrices();

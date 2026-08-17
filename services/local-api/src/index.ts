@@ -39,6 +39,7 @@ import {
 } from "./db.js";
 import {
   analytics,
+  analyticsByWasher,
   cancelOrder,
   getOrCreateDraft,
   getOrder,
@@ -53,6 +54,7 @@ import { flushOutbox, startSyncLoop } from "./sync.js";
 import {
   buildShiftReport,
   closeShift,
+  getOpenShift,
   getShift,
   getShiftStatus,
   listShifts,
@@ -158,6 +160,8 @@ function mapServiceRow(s: {
   active: number;
   sort_order: number;
   tab_id: string | null;
+  coefficient_enabled?: number | null;
+  coefficient_step_kopecks?: number | null;
 }) {
   return {
     id: s.id,
@@ -167,6 +171,8 @@ function mapServiceRow(s: {
     active: !!s.active,
     sortOrder: s.sort_order,
     tabId: s.tab_id ?? "",
+    coefficientEnabled: !!s.coefficient_enabled,
+    coefficientStepKopecks: s.coefficient_step_kopecks ?? 5000,
   };
 }
 
@@ -269,6 +275,11 @@ app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
     value: number;
     active: number;
   }[];
+  const staffWashers = db
+    .prepare(
+      "SELECT id, name, salary_percent, sort_order FROM staff_washers WHERE active = 1 ORDER BY sort_order, name"
+    )
+    .all() as { id: string; name: string; salary_percent: number; sort_order: number }[];
   return {
     vehicleClasses: vehicleClasses.map(mapVehicleClassRow),
     tabs: tabs.map(mapTabRow),
@@ -279,6 +290,12 @@ app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
       type: d.type,
       value: d.value,
       active: !!d.active,
+    })),
+    staffWashers: staffWashers.map((w) => ({
+      id: w.id,
+      name: w.name,
+      salaryPercent: w.salary_percent,
+      sortOrder: w.sort_order,
     })),
   };
 });
@@ -366,10 +383,27 @@ app.get<{ Params: { id: string } }>("/api/shifts/:id/report", async (req) => {
 
 app.put<{
   Params: { id: string };
-  Body: { items: { serviceId: string; qty: number }[]; discountId: string | null };
+  Body: {
+    items: {
+      serviceId?: string | null;
+      name?: string;
+      qty: number;
+      priceKopecks?: number;
+      basePriceKopecks?: number;
+      coefficientExtraKopecks?: number;
+      isManual?: boolean;
+    }[];
+    discountId: string | null;
+    staffWasherIds?: string[];
+  };
 }>("/api/orders/:id", async (req) => {
   requireWasher(req);
-  return setOrderItems(req.params.id, req.body.items ?? [], req.body.discountId ?? null);
+  return setOrderItems(
+    req.params.id,
+    req.body.items ?? [],
+    req.body.discountId ?? null,
+    req.body.staffWasherIds
+  );
 });
 
 app.put<{ Params: { id: string }; Body: { classId: string } }>(
@@ -539,6 +573,8 @@ app.post<{
     active?: boolean;
     sortOrder?: number;
     tabId?: string;
+    coefficientEnabled?: boolean;
+    coefficientStepKopecks?: number;
   };
 }>("/api/admin/services", async (req) => {
   requireAdmin(req);
@@ -546,11 +582,14 @@ app.post<{
   const tabId =
     req.body.tabId || getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id || "";
   if (!tabId) throw new Error("Не найдена вкладка каталога");
-  // Для вкладок с ценой по классу (Услуги / Доп.услуги) в services допускается 0
   const priceKopecks = req.body.priceKopecks ?? 0;
   const description = String(req.body.description ?? "").trim();
+  const step = Math.max(100, Math.round(req.body.coefficientStepKopecks ?? 5000));
   db.prepare(
-    "INSERT INTO services (id, name, description, price_kopecks, active, sort_order, tab_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    `INSERT INTO services (
+      id, name, description, price_kopecks, active, sort_order, tab_id,
+      coefficient_enabled, coefficient_step_kopecks
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     req.body.name,
@@ -558,7 +597,9 @@ app.post<{
     priceKopecks,
     req.body.active === false ? 0 : 1,
     req.body.sortOrder ?? 0,
-    tabId
+    tabId,
+    req.body.coefficientEnabled ? 1 : 0,
+    step
   );
   return { id };
 });
@@ -572,12 +613,23 @@ app.put<{
     active: boolean;
     sortOrder: number;
     tabId?: string;
+    coefficientEnabled?: boolean;
+    coefficientStepKopecks?: number;
   };
 }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
   const existing = db
-    .prepare("SELECT tab_id, description FROM services WHERE id = ?")
-    .get(req.params.id) as { tab_id: string | null; description: string | null } | undefined;
+    .prepare(
+      "SELECT tab_id, description, coefficient_enabled, coefficient_step_kopecks FROM services WHERE id = ?"
+    )
+    .get(req.params.id) as
+    | {
+        tab_id: string | null;
+        description: string | null;
+        coefficient_enabled: number;
+        coefficient_step_kopecks: number;
+      }
+    | undefined;
   const tabId =
     req.body.tabId ||
     existing?.tab_id ||
@@ -587,8 +639,19 @@ app.put<{
     req.body.description !== undefined
       ? String(req.body.description).trim()
       : (existing?.description ?? "");
+  const coeffEnabled =
+    req.body.coefficientEnabled !== undefined
+      ? req.body.coefficientEnabled
+        ? 1
+        : 0
+      : (existing?.coefficient_enabled ?? 0);
+  const step =
+    req.body.coefficientStepKopecks !== undefined
+      ? Math.max(100, Math.round(req.body.coefficientStepKopecks))
+      : (existing?.coefficient_step_kopecks ?? 5000);
   db.prepare(
-    "UPDATE services SET name = ?, description = ?, price_kopecks = ?, active = ?, sort_order = ?, tab_id = ? WHERE id = ?"
+    `UPDATE services SET name = ?, description = ?, price_kopecks = ?, active = ?, sort_order = ?,
+     tab_id = ?, coefficient_enabled = ?, coefficient_step_kopecks = ? WHERE id = ?`
   ).run(
     req.body.name,
     description,
@@ -596,6 +659,8 @@ app.put<{
     req.body.active ? 1 : 0,
     req.body.sortOrder,
     tabId,
+    coeffEnabled,
+    step,
     req.params.id
   );
   return { ok: true };
@@ -889,9 +954,73 @@ app.put<{
 app.delete<{ Params: { id: string } }>("/api/admin/washers/:id", async (req) => {
   requireAdmin(req);
   const count = db.prepare("SELECT COUNT(*) as c FROM washers").get() as { c: number };
-  if (count.c <= 1) throw new Error("Нельзя удалить последнего мойщика");
+  if (count.c <= 1) throw new Error("Нельзя удалить последнего оператора");
   db.prepare("DELETE FROM sessions WHERE washer_id = ?").run(req.params.id);
   const result = db.prepare("DELETE FROM washers WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) throw new Error("Оператор не найден");
+  return { ok: true };
+});
+
+app.get("/api/admin/staff-washers", async (req) => {
+  requireAdmin(req);
+  const rows = db
+    .prepare("SELECT * FROM staff_washers ORDER BY sort_order, name")
+    .all() as {
+    id: string;
+    name: string;
+    salary_percent: number;
+    active: number;
+    sort_order: number;
+  }[];
+  return rows.map((w) => ({
+    id: w.id,
+    name: w.name,
+    salaryPercent: w.salary_percent,
+    active: !!w.active,
+    sortOrder: w.sort_order,
+  }));
+});
+
+app.post<{
+  Body: { name: string; salaryPercent?: number; active?: boolean; sortOrder?: number };
+}>("/api/admin/staff-washers", async (req) => {
+  requireAdmin(req);
+  const name = String(req.body.name ?? "").trim();
+  if (!name) throw new Error("Укажите имя мойщика");
+  const salary = Math.min(100, Math.max(0, Math.round(req.body.salaryPercent ?? 0)));
+  const id = nanoid();
+  db.prepare(
+    `INSERT INTO staff_washers (id, name, salary_percent, active, sort_order)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(id, name, salary, req.body.active === false ? 0 : 1, req.body.sortOrder ?? 0);
+  return { id };
+});
+
+app.put<{
+  Params: { id: string };
+  Body: { name: string; salaryPercent: number; active: boolean; sortOrder?: number };
+}>("/api/admin/staff-washers/:id", async (req) => {
+  requireAdmin(req);
+  const name = String(req.body.name ?? "").trim();
+  if (!name) throw new Error("Укажите имя мойщика");
+  const salary = Math.min(100, Math.max(0, Math.round(req.body.salaryPercent ?? 0)));
+  db.prepare(
+    `UPDATE staff_washers SET name = ?, salary_percent = ?, active = ?, sort_order = ?
+     WHERE id = ?`
+  ).run(
+    name,
+    salary,
+    req.body.active ? 1 : 0,
+    req.body.sortOrder ?? 0,
+    req.params.id
+  );
+  return { ok: true };
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/staff-washers/:id", async (req) => {
+  requireAdmin(req);
+  db.prepare("DELETE FROM order_staff_washers WHERE staff_washer_id = ?").run(req.params.id);
+  const result = db.prepare("DELETE FROM staff_washers WHERE id = ?").run(req.params.id);
   if (result.changes === 0) throw new Error("Мойщик не найден");
   return { ok: true };
 });
@@ -921,7 +1050,6 @@ app.get<{ Querystring: { period?: string } }>("/api/admin/analytics", async (req
     from = new Date(now);
     from.setUTCDate(1);
     from.setUTCHours(0, 0, 0, 0);
-    // rough Moscow month start
     const label = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Europe/Moscow",
       year: "numeric",
@@ -938,6 +1066,73 @@ app.get<{ Querystring: { period?: string } }>("/api/admin/analytics", async (req
     from = new Date(`${label}T00:00:00+03:00`);
   }
   return analytics(from.toISOString(), now.toISOString());
+});
+
+app.get<{
+  Querystring: {
+    mode?: string;
+    from?: string;
+    to?: string;
+    shiftId?: string;
+  };
+}>("/api/admin/analytics/by-washer", async (req) => {
+  requireAdmin(req);
+  const mode = req.query.mode ?? "shift";
+  const now = new Date();
+
+  function moscowDayLabel(d: Date) {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(d);
+  }
+
+  let fromIso: string;
+  let toIso: string = now.toISOString();
+
+  if (mode === "range" && req.query.from && req.query.to) {
+    fromIso = new Date(`${req.query.from}T00:00:00+03:00`).toISOString();
+    toIso = new Date(`${req.query.to}T23:59:59.999+03:00`).toISOString();
+  } else if (mode === "week") {
+    const label = moscowDayLabel(now);
+    const today = new Date(`${label}T12:00:00+03:00`);
+    const day = today.getUTCDay(); // 0 Sun
+    const mondayOffset = day === 0 ? -6 : 1 - day;
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() + mondayOffset);
+    fromIso = new Date(`${moscowDayLabel(monday)}T00:00:00+03:00`).toISOString();
+  } else if (mode === "month") {
+    const label = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+    }).format(now);
+    fromIso = new Date(`${label}-01T00:00:00+03:00`).toISOString();
+  } else {
+    // shift (default): current/open shift or last closed
+    let shiftId = req.query.shiftId;
+    if (!shiftId) {
+      const open = getOpenShift();
+      if (open) shiftId = open.id;
+      else {
+        const last = listShifts(1)[0];
+        shiftId = last?.id;
+      }
+    }
+    if (!shiftId) {
+      return { from: toIso, to: toIso, washers: [], mode: "shift", shiftId: null };
+    }
+    const shift = getShift(shiftId);
+    if (!shift) throw new Error("Смена не найдена");
+    fromIso = shift.openedAt;
+    toIso = shift.closedAt ?? now.toISOString();
+    const result = analyticsByWasher(fromIso, toIso);
+    return { ...result, mode: "shift", shiftId };
+  }
+
+  return { ...analyticsByWasher(fromIso, toIso), mode };
 });
 
 app.get<{ Querystring: { limit?: string } }>("/api/admin/shifts", async (req) => {

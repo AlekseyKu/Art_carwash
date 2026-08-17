@@ -717,6 +717,14 @@ a.topbar-pill {
   min-height: 0;
 }
 
+.pos-cart-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+}
+
 .pos-cart-list {
   display: flex;
   flex-direction: column;
@@ -759,9 +767,106 @@ a.topbar-pill {
   font-size: 0.8rem;
 }
 
+.pos-cart-line-coeff {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.pos-cart-coeff-controls {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.pos-cart-coeff-btn {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 10px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  color: var(--ink);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.pos-cart-coeff-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
+}
+
+.pos-cart-coeff-btn:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.pos-cart-coeff-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pos-cart-line-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
 .pos-cart-line-sum {
   flex-shrink: 0;
   font-size: 1rem;
+}
+
+.pos-cart-line-remove {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pos-cart-line-remove:hover {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, white);
+}
+
+.pos-cart-staff-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.pos-staff-chip {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+.pos-staff-chip:hover {
+  background: color-mix(in srgb, var(--brand-silver-soft) 35%, white);
+}
+
+.pos-staff-chip:active {
+  transform: scale(0.97);
+}
+
+.pos-staff-chip.selected {
+  background: color-mix(in srgb, var(--brand-primary) 16%, white);
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, var(--brand-silver-soft));
+  color: var(--ink);
 }
 
 .pos-cart-totals {
@@ -1115,6 +1220,11 @@ input.touch-field-input {
 .osk-key:active {
   transform: scale(0.97);
   background: color-mix(in srgb, var(--brand-primary) 12%, white);
+}
+
+.osk-key.selected {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 14%, white);
 }
 
 .osk-key-wide {

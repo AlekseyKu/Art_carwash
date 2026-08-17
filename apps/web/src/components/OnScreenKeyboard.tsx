@@ -58,6 +58,13 @@ const EN_ROWS = [
 
 const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"];
 const SYMBOLS = [".", ":", "/", "-", "_", "@", "#", "%", "+", "="];
+const MORE_SYMBOLS = ["!", "?", "*", "(", ")", ",", ";", "«", "»", "\\", "&"];
+const SHIFT_SYMBOLS = ["!", "?", "*", "(", ")", ",", ";", "«", "»", "\\", "&", "%", "#", "@", "+", "="];
+
+function upperLetter(ch: string, layout: "ru" | "en") {
+  if (layout === "en") return ch.toUpperCase();
+  return ch.toLocaleUpperCase("ru-RU");
+}
 
 type FieldProps = {
   value: string;
@@ -155,6 +162,8 @@ function KeyboardPanel({
     session.layout ?? (session.mode === "ascii" ? "en" : "ru")
   );
   const [pasteError, setPasteError] = useState("");
+  const [shift, setShift] = useState(false);
+  const [symbolPage, setSymbolPage] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -197,7 +206,13 @@ function KeyboardPanel({
       }
       if (!/^\d$/.test(ch)) return;
     }
-    commit(value + ch);
+    const isLetterMode = mode === "text" || mode === "ascii";
+    let out = ch;
+    if (isLetterMode && shift && /^[a-zа-яё]$/i.test(ch)) {
+      out = upperLetter(ch, layout);
+      setShift(false);
+    }
+    commit(value + out);
     inputRef.current?.focus();
   }
 
@@ -272,7 +287,8 @@ function KeyboardPanel({
 
   const letterMode = session.mode === "text" || session.mode === "ascii";
   const rows = layout === "ru" ? RU_ROWS : EN_ROWS;
-  const showSymbols = session.mode === "ascii" || layout === "en";
+  const showSymbols = session.mode === "ascii" || layout === "en" || symbolPage;
+  const symbolKeys = symbolPage ? SHIFT_SYMBOLS : SYMBOLS;
   const inputType = session.mode === "pin" ? "password" : "text";
   const inputMode =
     session.mode === "pin"
@@ -350,7 +366,7 @@ function KeyboardPanel({
             </div>
             {showSymbols && (
               <div className="osk-row">
-                {SYMBOLS.map((k) => (
+                {(symbolPage ? MORE_SYMBOLS : SYMBOLS).map((k) => (
                   <button
                     key={k}
                     type="button"
@@ -363,11 +379,30 @@ function KeyboardPanel({
                 ))}
               </div>
             )}
-            {rows.map((row, i) => (
-              <div key={i} className="osk-row">
-                {row.map((k) => (
+            {!symbolPage &&
+              rows.map((row, i) => (
+                <div key={i} className="osk-row">
+                  {row.map((k) => {
+                    const label = shift ? upperLetter(k, layout) : k;
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        className="osk-key"
+                        onMouseDown={keepInputFocus}
+                        onClick={() => append(k)}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ))}
+            {symbolPage && (
+              <div className="osk-row">
+                {symbolKeys.map((k) => (
                   <button
-                    key={k}
+                    key={`s-${k}`}
                     type="button"
                     className="osk-key"
                     onMouseDown={keepInputFocus}
@@ -377,9 +412,25 @@ function KeyboardPanel({
                   </button>
                 ))}
               </div>
-            ))}
+            )}
             <div className="osk-row">
-              {session.mode === "text" && (
+              <button
+                type="button"
+                className={`osk-key osk-key-wide${shift ? " selected" : ""}`}
+                onMouseDown={keepInputFocus}
+                onClick={() => setShift((s) => !s)}
+              >
+                ⇧
+              </button>
+              <button
+                type="button"
+                className={`osk-key osk-key-wide${symbolPage ? " selected" : ""}`}
+                onMouseDown={keepInputFocus}
+                onClick={() => setSymbolPage((s) => !s)}
+              >
+                {symbolPage ? "ABC" : "#+="}
+              </button>
+              {session.mode === "text" && !symbolPage && (
                 <button
                   type="button"
                   className="osk-key osk-key-wide"

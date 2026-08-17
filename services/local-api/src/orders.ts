@@ -28,17 +28,42 @@ type OrderRow = {
   vehicle_class_name: string | null;
 };
 
+export type OrderItemInput = {
+  serviceId?: string | null;
+  name?: string;
+  qty: number;
+  priceKopecks?: number;
+  basePriceKopecks?: number;
+  coefficientExtraKopecks?: number;
+  isManual?: boolean;
+};
+
+type ItemRow = {
+  id: string;
+  order_id: string;
+  service_id: string;
+  name_snapshot: string;
+  price_kopecks: number;
+  qty: number;
+  is_manual?: number;
+  base_price_kopecks?: number | null;
+  coefficient_extra_kopecks?: number;
+};
+
 function mapOrder(row: OrderRow) {
   const items = db
     .prepare("SELECT * FROM order_items WHERE order_id = ?")
-    .all(row.id) as {
-    id: string;
-    order_id: string;
-    service_id: string;
-    name_snapshot: string;
-    price_kopecks: number;
-    qty: number;
-  }[];
+    .all(row.id) as ItemRow[];
+
+  const staff = db
+    .prepare(
+      `SELECT sw.id, sw.name, sw.salary_percent
+       FROM order_staff_washers osw
+       JOIN staff_washers sw ON sw.id = osw.staff_washer_id
+       WHERE osw.order_id = ?
+       ORDER BY sw.sort_order, sw.name`
+    )
+    .all(row.id) as { id: string; name: string; salary_percent: number }[];
 
   return {
     id: row.id,
@@ -57,14 +82,28 @@ function mapOrder(row: OrderRow) {
     updatedAt: row.updated_at,
     vehicleClassId: row.vehicle_class_id,
     vehicleClassName: row.vehicle_class_name,
-    items: items.map((i) => ({
-      id: i.id,
-      orderId: i.order_id,
-      serviceId: i.service_id,
-      nameSnapshot: i.name_snapshot,
-      priceKopecks: i.price_kopecks,
-      qty: i.qty,
+    staffWasherIds: staff.map((s) => s.id),
+    staffWashers: staff.map((s) => ({
+      id: s.id,
+      name: s.name,
+      salaryPercent: s.salary_percent,
     })),
+    items: items.map((i) => {
+      const isManual = !!i.is_manual || !i.service_id;
+      const base = i.base_price_kopecks ?? i.price_kopecks;
+      const extra = i.coefficient_extra_kopecks ?? 0;
+      return {
+        id: i.id,
+        orderId: i.order_id,
+        serviceId: isManual ? null : i.service_id,
+        nameSnapshot: i.name_snapshot,
+        priceKopecks: i.price_kopecks,
+        qty: i.qty,
+        isManual,
+        basePriceKopecks: base,
+        coefficientExtraKopecks: extra,
+      };
+    }),
   };
 }
 
@@ -79,7 +118,6 @@ function dayStartUtcIso() {
   const y = parts.find((p) => p.type === "year")!.value;
   const m = parts.find((p) => p.type === "month")!.value;
   const d = parts.find((p) => p.type === "day")!.value;
-  // Approximate Moscow midnight as UTC-3
   return new Date(`${y}-${m}-${d}T00:00:00+03:00`).toISOString();
 }
 
@@ -136,6 +174,24 @@ function ensureOrderHasVehicleClass(order: OrderRow): OrderRow {
   return order;
 }
 
+function setOrderStaffWashers(orderId: string, staffWasherIds: string[] | undefined) {
+  if (staffWasherIds === undefined) return;
+  db.prepare("DELETE FROM order_staff_washers WHERE order_id = ?").run(orderId);
+  const insert = db.prepare(
+    "INSERT INTO order_staff_washers (order_id, staff_washer_id) VALUES (?, ?)"
+  );
+  const seen = new Set<string>();
+  for (const id of staffWasherIds) {
+    if (!id || seen.has(id)) continue;
+    const row = db
+      .prepare("SELECT id FROM staff_washers WHERE id = ? AND active = 1")
+      .get(id) as { id: string } | undefined;
+    if (!row) continue;
+    seen.add(id);
+    insert.run(orderId, id);
+  }
+}
+
 export function getOrCreateDraft(postId: number, washerId: string) {
   const existing = db
     .prepare(
@@ -175,31 +231,71 @@ export function getOrder(id: string) {
 
 export function setOrderItems(
   orderId: string,
-  items: { serviceId: string; qty: number }[],
-  discountId: string | null
+  items: OrderItemInput[],
+  discountId: string | null,
+  staffWasherIds?: string[]
 ) {
   const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as OrderRow | undefined;
   if (!order || order.status !== "draft") throw new Error("Заказ нельзя изменить");
   ensureOrderHasVehicleClass(order);
 
   db.prepare("DELETE FROM order_items WHERE order_id = ?").run(orderId);
+  const insert = db.prepare(
+    `INSERT INTO order_items (
+      id, order_id, service_id, name_snapshot, price_kopecks, qty,
+      is_manual, base_price_kopecks, coefficient_extra_kopecks
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+
   for (const item of items) {
     if (item.qty <= 0) continue;
+    const isManual = !!item.isManual || !item.serviceId;
+
+    if (isManual) {
+      const name = String(item.name ?? "").trim();
+      if (!name) continue;
+      const price = Math.max(0, Math.round(item.priceKopecks ?? 0));
+      insert.run(nanoid(), orderId, "", name, price, item.qty, 1, price, 0);
+      continue;
+    }
+
     const svc = db
-      .prepare("SELECT id, name FROM services WHERE id = ? AND active = 1")
-      .get(item.serviceId) as { id: string; name: string } | undefined;
+      .prepare(
+        "SELECT id, name, coefficient_enabled, coefficient_step_kopecks FROM services WHERE id = ? AND active = 1"
+      )
+      .get(item.serviceId!) as
+      | {
+          id: string;
+          name: string;
+          coefficient_enabled: number;
+          coefficient_step_kopecks: number;
+        }
+      | undefined;
     if (!svc) continue;
-    const price = resolveServicePrice(svc.id, order.vehicle_class_id);
-    if (price === null) continue;
-    db.prepare(
-      "INSERT INTO order_items (id, order_id, service_id, name_snapshot, price_kopecks, qty) VALUES (?, ?, ?, ?, ?, ?)"
-    ).run(nanoid(), orderId, svc.id, svc.name, price, item.qty);
+    const catalogPrice = resolveServicePrice(svc.id, order.vehicle_class_id);
+    if (catalogPrice === null) continue;
+
+    const base =
+      item.basePriceKopecks != null && Number.isFinite(item.basePriceKopecks)
+        ? Math.max(0, Math.round(item.basePriceKopecks))
+        : catalogPrice;
+    let extra = Math.max(0, Math.round(item.coefficientExtraKopecks ?? 0));
+    if (!svc.coefficient_enabled) extra = 0;
+    const price =
+      item.priceKopecks != null && Number.isFinite(item.priceKopecks)
+        ? Math.max(base, Math.round(item.priceKopecks))
+        : base + extra;
+    extra = Math.max(0, price - base);
+
+    insert.run(nanoid(), orderId, svc.id, svc.name, price, item.qty, 0, base, extra);
   }
+
   db.prepare("UPDATE orders SET discount_id = ?, updated_at = ? WHERE id = ?").run(
     discountId,
     new Date().toISOString(),
     orderId
   );
+  setOrderStaffWashers(orderId, staffWasherIds);
   recalc(orderId);
   return getOrder(orderId)!;
 }
@@ -219,15 +315,29 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
   ).run(vc.id, vc.name, now, orderId);
 
   const items = db
-    .prepare("SELECT id, service_id, qty FROM order_items WHERE order_id = ?")
-    .all(orderId) as { id: string; service_id: string; qty: number }[];
+    .prepare(
+      `SELECT id, service_id, qty, is_manual, coefficient_extra_kopecks
+       FROM order_items WHERE order_id = ?`
+    )
+    .all(orderId) as {
+    id: string;
+    service_id: string;
+    qty: number;
+    is_manual: number;
+    coefficient_extra_kopecks: number;
+  }[];
 
   for (const item of items) {
+    if (item.is_manual || !item.service_id) continue;
     const price = resolveServicePrice(item.service_id, vc.id);
     if (price === null) {
       db.prepare("DELETE FROM order_items WHERE id = ?").run(item.id);
     } else {
-      db.prepare("UPDATE order_items SET price_kopecks = ? WHERE id = ?").run(price, item.id);
+      const extra = Math.max(0, item.coefficient_extra_kopecks ?? 0);
+      db.prepare(
+        `UPDATE order_items SET base_price_kopecks = ?, price_kopecks = ?, coefficient_extra_kopecks = ?
+         WHERE id = ?`
+      ).run(price, price + extra, extra, item.id);
     }
   }
 
@@ -239,6 +349,7 @@ export function markAwaitingPayment(orderId: string) {
   const order = getOrder(orderId);
   if (!order || order.status !== "draft") throw new Error("Неверный статус");
   if (!order.items?.length) throw new Error("Пустой заказ");
+  if (!order.staffWasherIds?.length) throw new Error("Выберите мойщика");
   db.prepare("UPDATE orders SET status = 'awaiting_payment', updated_at = ? WHERE id = ?").run(
     new Date().toISOString(),
     orderId
@@ -247,6 +358,10 @@ export function markAwaitingPayment(orderId: string) {
 }
 
 export function markPaid(orderId: string, method: PaymentMethod) {
+  const current = getOrder(orderId);
+  if (current && !current.staffWasherIds?.length && current.status !== "paid") {
+    throw new Error("Выберите мойщика");
+  }
   const now = new Date().toISOString();
   const open = getOpenShift();
   const shiftId = open && !isShiftStale(open) ? open.id : null;
@@ -326,9 +441,7 @@ export function listRecentOrders(limit = 5) {
 
 export function analytics(fromIso: string, toIso: string) {
   const orders = db
-    .prepare(
-      `SELECT * FROM orders WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?`
-    )
+    .prepare(`SELECT * FROM orders WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?`)
     .all(fromIso, toIso) as OrderRow[];
 
   const totalKopecks = orders.reduce((s, o) => s + o.total_kopecks, 0);
@@ -380,5 +493,60 @@ export function analytics(fromIso: string, toIso: string) {
       totalKopecks: v.total,
       count: v.count,
     })),
+  };
+}
+
+/** Аналитика по мойщикам-персоналу: выручка делится поровну между участниками заказа. */
+export function analyticsByWasher(fromIso: string, toIso: string) {
+  const orders = db
+    .prepare(
+      `SELECT id, total_kopecks FROM orders
+       WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?`
+    )
+    .all(fromIso, toIso) as { id: string; total_kopecks: number }[];
+
+  type Acc = {
+    id: string;
+    name: string;
+    salaryPercent: number;
+    orderCount: number;
+    revenueKopecks: number;
+    salaryKopecks: number;
+  };
+  const byStaff = new Map<string, Acc>();
+
+  for (const o of orders) {
+    const staff = db
+      .prepare(
+        `SELECT sw.id, sw.name, sw.salary_percent
+         FROM order_staff_washers osw
+         JOIN staff_washers sw ON sw.id = osw.staff_washer_id
+         WHERE osw.order_id = ?`
+      )
+      .all(o.id) as { id: string; name: string; salary_percent: number }[];
+    if (!staff.length) continue;
+    const share = Math.round(o.total_kopecks / staff.length);
+    for (const s of staff) {
+      const acc = byStaff.get(s.id) ?? {
+        id: s.id,
+        name: s.name,
+        salaryPercent: s.salary_percent,
+        orderCount: 0,
+        revenueKopecks: 0,
+        salaryKopecks: 0,
+      };
+      acc.orderCount += 1;
+      acc.revenueKopecks += share;
+      acc.salaryKopecks += Math.round((share * s.salary_percent) / 100);
+      acc.salaryPercent = s.salary_percent;
+      byStaff.set(s.id, acc);
+    }
+  }
+
+  const rows = [...byStaff.values()].sort((a, b) => b.revenueKopecks - a.revenueKopecks);
+  return {
+    from: fromIso,
+    to: toIso,
+    washers: rows,
   };
 }

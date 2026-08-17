@@ -7,19 +7,83 @@ import {
   isUnauthorized,
   setWasherToken,
   type OrderDto,
+  type OrderItemInput,
   type ShiftDto,
   type ShiftReportDto,
   type VehicleClassDto,
 } from "../api";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 import { ShiftReportView } from "../components/ShiftReportView";
+import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 import { WindowControls } from "../components/WindowControls";
 import { vehicleClassIconSrc } from "../vehicleClassIcons";
 
 type Catalog = Awaited<ReturnType<typeof api.catalog>>;
 
+type CartLine = {
+  key: string;
+  serviceId: string | null;
+  name: string;
+  description?: string;
+  qty: number;
+  basePriceKopecks: number;
+  coefficientExtraKopecks: number;
+  priceKopecks: number;
+  isManual: boolean;
+  coefficientEnabled?: boolean;
+  coefficientStepKopecks?: number;
+};
+
 /** Черновик всегда на одном «посту» — выбор постов в UI убран. */
 const DRAFT_POST_ID = 1;
+
+function qtyFromLines(lines: CartLine[]): Record<string, number> {
+  const map: Record<string, number> = {};
+  for (const line of lines) {
+    if (line.serviceId) map[line.serviceId] = (map[line.serviceId] ?? 0) + line.qty;
+  }
+  return map;
+}
+
+function linesFromOrder(o: OrderDto, cat: Catalog | null): CartLine[] {
+  return (o.items ?? []).map((i, idx) => {
+    const isManual = !!i.isManual || !i.serviceId;
+    const svc =
+      !isManual && i.serviceId
+        ? cat?.services.find((s) => s.id === i.serviceId)
+        : undefined;
+    const extra = Math.max(0, i.coefficientExtraKopecks ?? 0);
+    const base =
+      i.basePriceKopecks != null
+        ? Math.max(0, i.basePriceKopecks)
+        : Math.max(0, i.priceKopecks - extra);
+    return {
+      key: isManual ? (i.id ?? `manual-${idx}-${i.nameSnapshot}`) : String(i.serviceId),
+      serviceId: isManual ? null : i.serviceId,
+      name: i.nameSnapshot,
+      description: svc?.description ?? "",
+      qty: i.qty,
+      basePriceKopecks: base,
+      coefficientExtraKopecks: extra,
+      priceKopecks: i.priceKopecks,
+      isManual,
+      coefficientEnabled: Boolean(svc?.coefficientEnabled) && !isManual,
+      coefficientStepKopecks: svc?.coefficientStepKopecks ?? 5000,
+    };
+  });
+}
+
+function toOrderItemInputs(lines: CartLine[]): OrderItemInput[] {
+  return lines.map((l) => ({
+    serviceId: l.isManual ? null : l.serviceId,
+    name: l.name,
+    qty: l.qty,
+    priceKopecks: l.priceKopecks,
+    basePriceKopecks: l.basePriceKopecks,
+    coefficientExtraKopecks: l.coefficientExtraKopecks,
+    isManual: l.isManual,
+  }));
+}
 
 export function PosPage() {
   const [token, setToken] = useState(getWasherToken());
@@ -32,7 +96,12 @@ export function PosPage() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [cartLines, setCartLines] = useState<CartLine[]>([]);
+  const [staffWasherIds, setStaffWasherIds] = useState<string[]>([]);
   const [discountId, setDiscountId] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualName, setManualName] = useState("");
+  const [manualPriceRub, setManualPriceRub] = useState("");
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
   const [pendingPay, setPendingPay] = useState<{
@@ -71,6 +140,8 @@ export function PosPage() {
     setOrder(null);
     setCatalog(null);
     setQty({});
+    setCartLines([]);
+    setStaffWasherIds([]);
     setDiscountId(null);
     setPayOpen(false);
     setPendingPay(null);
@@ -83,6 +154,7 @@ export function PosPage() {
     setRolloverPrompt(false);
     setCloseReport(null);
     setShiftConfirm(null);
+    setManualOpen(false);
     if (message) setError(message);
   }
 
@@ -133,6 +205,7 @@ export function PosPage() {
           services: c.services ?? [],
           discounts: c.discounts ?? [],
           vehicleClasses: c.vehicleClasses ?? [],
+          staffWashers: c.staffWashers ?? [],
         });
         setCatalogTabId((prev) => prev ?? tabs[0]?.id ?? null);
         if (!vehicleClassId) {
@@ -161,12 +234,7 @@ export function PosPage() {
     api
       .draft(DRAFT_POST_ID, token)
       .then((o) => {
-        setOrder(o);
-        const map: Record<string, number> = {};
-        for (const i of o.items ?? []) map[i.serviceId] = i.qty;
-        setQty(map);
-        setDiscountId(o.discountId);
-        if (o.vehicleClassId) setVehicleClassId(o.vehicleClassId);
+        applyOrder(o);
       })
       .catch((e) => {
         if (isUnauthorized(e)) forceLogout(e.message);
@@ -177,36 +245,57 @@ export function PosPage() {
     });
   }, [token]);
 
-  const subtotal = useMemo(() => {
-    if (!catalog) return 0;
-    return catalog.services.reduce((s, svc) => s + svc.priceKopecks * (qty[svc.id] ?? 0), 0);
-  }, [catalog, qty]);
+  const subtotal = useMemo(
+    () => cartLines.reduce((s, line) => s + line.priceKopecks * line.qty, 0),
+    [cartLines]
+  );
 
-  const selectedLines = useMemo(() => {
-    if (!catalog) return [];
-    return catalog.services
-      .filter((svc) => (qty[svc.id] ?? 0) > 0)
-      .map((svc) => {
-        const q = qty[svc.id] ?? 0;
-        return {
-          id: svc.id,
-          name: svc.name,
-          description: svc.description ?? "",
-          qty: q,
-          priceKopecks: svc.priceKopecks,
-          lineTotal: svc.priceKopecks * q,
-        };
-      });
-  }, [catalog, qty]);
+  const staffWashers = useMemo(
+    () => (catalog?.staffWashers ?? []).filter((w) => w.active !== false),
+    [catalog]
+  );
 
-  function applyOrder(o: OrderDto) {
+  function applyOrder(o: OrderDto, cat: Catalog | null = catalog) {
     setOrder(o);
-    const map: Record<string, number> = {};
-    for (const i of o.items ?? []) map[i.serviceId] = i.qty;
-    setQty(map);
+    const lines = linesFromOrder(o, cat);
+    setCartLines(lines);
+    setQty(qtyFromLines(lines));
     setDiscountId(o.discountId);
+    setStaffWasherIds(o.staffWasherIds ?? []);
     if (o.vehicleClassId) setVehicleClassId(o.vehicleClassId);
   }
+
+  // Enrich coefficient flags / descriptions when catalog arrives or class prices change
+  useEffect(() => {
+    if (!catalog) return;
+    setCartLines((prev) => {
+      if (!prev.length) return prev;
+      let changed = false;
+      const next = prev.map((line) => {
+        if (line.isManual || !line.serviceId) return line;
+        const svc = catalog.services.find((s) => s.id === line.serviceId);
+        if (!svc) return line;
+        const coefficientEnabled = Boolean(svc.coefficientEnabled);
+        const coefficientStepKopecks = svc.coefficientStepKopecks ?? 5000;
+        const description = svc.description ?? "";
+        if (
+          line.coefficientEnabled === coefficientEnabled &&
+          line.coefficientStepKopecks === coefficientStepKopecks &&
+          (line.description ?? "") === description
+        ) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          description,
+          coefficientEnabled,
+          coefficientStepKopecks,
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, [catalog]);
 
   async function submitPin() {
     setError("");
@@ -222,19 +311,118 @@ export function PosPage() {
     setPin("");
   }
 
-  async function persist(nextQty = qty, nextDisc = discountId) {
+  async function persist(
+    nextLines = cartLines,
+    nextDisc = discountId,
+    nextStaff = staffWasherIds
+  ) {
     if (!token || !order) return;
-    const items = Object.entries(nextQty)
-      .filter(([, q]) => q > 0)
-      .map(([serviceId, q]) => ({ serviceId, qty: q }));
-    const updated = await api.saveOrder(order.id, { items, discountId: nextDisc }, token);
+    const updated = await api.saveOrder(
+      order.id,
+      {
+        items: toOrderItemInputs(nextLines),
+        discountId: nextDisc,
+        staffWasherIds: nextStaff,
+      },
+      token
+    );
     applyOrder(updated);
   }
 
   function toggleService(id: string) {
-    const next = { ...qty, [id]: qty[id] ? 0 : 1 };
-    setQty(next);
-    void persist(next, discountId);
+    const svc = catalog?.services.find((s) => s.id === id);
+    if (!svc) return;
+    const exists = cartLines.some((l) => l.serviceId === id);
+    let next: CartLine[];
+    if (exists) {
+      next = cartLines.filter((l) => l.serviceId !== id);
+    } else {
+      next = [
+        ...cartLines,
+        {
+          key: id,
+          serviceId: id,
+          name: svc.name,
+          description: svc.description ?? "",
+          qty: 1,
+          basePriceKopecks: svc.priceKopecks,
+          coefficientExtraKopecks: 0,
+          priceKopecks: svc.priceKopecks,
+          isManual: false,
+          coefficientEnabled: Boolean(svc.coefficientEnabled),
+          coefficientStepKopecks: svc.coefficientStepKopecks ?? 5000,
+        },
+      ];
+    }
+    setCartLines(next);
+    setQty(qtyFromLines(next));
+    void persist(next, discountId, staffWasherIds);
+  }
+
+  function removeLine(key: string) {
+    const next = cartLines.filter((l) => l.key !== key);
+    setCartLines(next);
+    setQty(qtyFromLines(next));
+    void persist(next, discountId, staffWasherIds);
+  }
+
+  function adjustCoefficient(key: string, direction: 1 | -1) {
+    const next = cartLines.map((line) => {
+      if (line.key !== key || !line.coefficientEnabled || line.isManual) return line;
+      const step = line.coefficientStepKopecks ?? 5000;
+      const extra = Math.max(0, line.coefficientExtraKopecks + direction * step);
+      return {
+        ...line,
+        coefficientExtraKopecks: extra,
+        priceKopecks: line.basePriceKopecks + extra,
+      };
+    });
+    setCartLines(next);
+    void persist(next, discountId, staffWasherIds);
+  }
+
+  function toggleStaffWasher(id: string) {
+    const next = staffWasherIds.includes(id)
+      ? staffWasherIds.filter((x) => x !== id)
+      : [...staffWasherIds, id];
+    setStaffWasherIds(next);
+    void persist(cartLines, discountId, next);
+  }
+
+  function addManualLine() {
+    const name = manualName.trim();
+    const rub = Number(String(manualPriceRub).replace(",", "."));
+    if (!name) {
+      setError("Укажите название позиции");
+      return;
+    }
+    if (!Number.isFinite(rub) || rub < 0) {
+      setError("Укажите цену");
+      return;
+    }
+    const priceKopecks = Math.round(rub * 100);
+    const key = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const next: CartLine[] = [
+      ...cartLines,
+      {
+        key,
+        serviceId: null,
+        name,
+        qty: 1,
+        basePriceKopecks: priceKopecks,
+        coefficientExtraKopecks: 0,
+        priceKopecks,
+        isManual: true,
+        coefficientEnabled: false,
+      },
+    ];
+    setCartLines(next);
+    setQty(qtyFromLines(next));
+    setManualOpen(false);
+    setManualName("");
+    setManualPriceRub("");
+    setError("");
+    void persist(next, discountId, staffWasherIds);
   }
 
   async function changeVehicleClass(classId: string) {
@@ -351,6 +539,14 @@ export function PosPage() {
   async function onPayClick() {
     setError("");
     if (!token) return;
+    if (!cartLines.length) {
+      setError("Добавьте позиции в заказ");
+      return;
+    }
+    if (!staffWasherIds.length) {
+      setError("Выберите мойщика");
+      return;
+    }
     try {
       const st = await refreshShift(token);
       if (st?.needsRollover) return;
@@ -368,6 +564,11 @@ export function PosPage() {
 
   async function startPay(method: "cash" | "card" | "sbp", emulate?: "success" | "cancel") {
     if (!token || !order) return;
+    if (!staffWasherIds.length) {
+      setError("Выберите мойщика");
+      setPayOpen(false);
+      return;
+    }
     setPayBusy(true);
     setError("");
     try {
@@ -388,8 +589,6 @@ export function PosPage() {
         setPendingPay(null);
         const fresh = await api.draft(DRAFT_POST_ID, token);
         applyOrder(fresh);
-        setQty({});
-        setDiscountId(null);
         setRecentKey((k) => k + 1);
         return;
       }
@@ -422,8 +621,6 @@ export function PosPage() {
         setPendingPay(null);
         const fresh = await api.draft(DRAFT_POST_ID, token);
         applyOrder(fresh);
-        setQty({});
-        setDiscountId(null);
         setRecentKey((k) => k + 1);
       } else {
         setPendingPay(null);
@@ -451,7 +648,7 @@ export function PosPage() {
             <div className="brand" style={{ fontSize: "1.75rem", marginBottom: "0.25rem" }}>
               {BRAND_NAME}
             </div>
-            <p className="muted">Введите PIN мойщика</p>
+            <p className="muted">Введите PIN оператора</p>
             <div className="pin-dots">
               {Array.from({ length: Math.max(4, pin.length || 4) }).map((_, i) => (
                 <span key={i} className={i < pin.length ? "filled" : ""} />
@@ -480,12 +677,13 @@ export function PosPage() {
   }
 
   return (
+    <TouchKeyboardProvider>
     <div className="app-shell">
       <header className="topbar">
         <div>
           <div className="brand">{BRAND_NAME}</div>
           <div className="muted" style={{ fontSize: "0.85rem" }}>
-            {washerName || "Мойщик"} · заказ #{order?.number ?? "—"}
+            Оператор{washerName ? `: ${washerName}` : ""} · заказ #{order?.number ?? "—"}
             {selectedClass ? ` · ${selectedClass.name}` : ""}
           </div>
         </div>
@@ -625,28 +823,113 @@ export function PosPage() {
           </section>
 
           <section className="panel pos-cart-panel">
-            <h2 className="h2">Заказ</h2>
+            <div className="pos-cart-header">
+              <h2 className="h2" style={{ margin: 0 }}>
+                Заказ
+              </h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Добавить ручную позицию"
+                title="Ручная позиция"
+                onClick={() => {
+                  setManualName("");
+                  setManualPriceRub("");
+                  setManualOpen(true);
+                }}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M12 5v14M5 12h14"
+                    stroke="currentColor"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </button>
+            </div>
             <div className="pos-cart-list">
-              {selectedLines.length === 0 ? (
+              {cartLines.length === 0 ? (
                 <p className="muted" style={{ margin: 0 }}>
                   Нет выбранных позиций
                 </p>
               ) : (
-                selectedLines.map((line) => (
-                  <div key={line.id} className="pos-cart-line">
+                cartLines.map((line) => (
+                  <div key={line.key} className="pos-cart-line">
                     <div className="pos-cart-line-text">
                       <span className="pos-cart-line-name">{line.name}</span>
                       {line.description ? (
                         <span className="pos-cart-line-desc">{line.description}</span>
+                      ) : null}
+                      {line.coefficientExtraKopecks > 0 ? (
+                        <span className="pos-cart-line-coeff">
+                          Коэффициент +{line.coefficientExtraKopecks / 100} руб
+                        </span>
                       ) : null}
                       {line.qty > 1 ? (
                         <span className="pos-cart-line-meta muted">
                           {formatRub(line.priceKopecks)} × {line.qty}
                         </span>
                       ) : null}
+                      {line.coefficientEnabled ? (
+                        <div className="pos-cart-coeff-controls">
+                          <button
+                            type="button"
+                            className="pos-cart-coeff-btn"
+                            aria-label="Уменьшить коэффициент"
+                            disabled={line.coefficientExtraKopecks <= 0}
+                            onClick={() => adjustCoefficient(line.key, -1)}
+                          >
+                            −
+                          </button>
+                          <button
+                            type="button"
+                            className="pos-cart-coeff-btn"
+                            aria-label="Увеличить коэффициент"
+                            onClick={() => adjustCoefficient(line.key, 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
-                    <strong className="pos-cart-line-sum">{formatRub(line.lineTotal)}</strong>
+                    <div className="pos-cart-line-aside">
+                      <strong className="pos-cart-line-sum">
+                        {formatRub(line.priceKopecks * line.qty)}
+                      </strong>
+                      <button
+                        type="button"
+                        className="pos-cart-line-remove"
+                        aria-label="Удалить позицию"
+                        title="Удалить"
+                        onClick={() => removeLine(line.key)}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
+                ))
+              )}
+            </div>
+
+            <h2 className="h2" style={{ marginTop: "1rem" }}>
+              Мойщики
+            </h2>
+            <div className="pos-cart-staff-chips">
+              {staffWashers.length === 0 ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Нет активных мойщиков
+                </p>
+              ) : (
+                staffWashers.map((w) => (
+                  <button
+                    key={w.id}
+                    type="button"
+                    className={`pos-staff-chip${staffWasherIds.includes(w.id) ? " selected" : ""}`}
+                    onClick={() => toggleStaffWasher(w.id)}
+                  >
+                    {w.name}
+                  </button>
                 ))
               )}
             </div>
@@ -660,7 +943,7 @@ export function PosPage() {
               onChange={(e) => {
                 const v = e.target.value || null;
                 setDiscountId(v);
-                void persist(qty, v);
+                void persist(cartLines, v, staffWasherIds);
               }}
             >
               <option value="">Без скидки</option>
@@ -690,7 +973,7 @@ export function PosPage() {
               type="button"
               className="btn-primary"
               style={{ width: "100%", marginTop: "1.25rem" }}
-              disabled={!order?.items?.length || rolloverPrompt}
+              disabled={!cartLines.length || !staffWasherIds.length || rolloverPrompt}
               onClick={() => void onPayClick()}
             >
               Оплата
@@ -968,6 +1251,43 @@ export function PosPage() {
           </div>
         </div>
       )}
+
+      {manualOpen && (
+        <div className="modal-backdrop">
+          <div className="modal stack">
+            <h2 className="h2">Ручная позиция</h2>
+            <TouchField
+              placeholder="Название"
+              title="Название"
+              mode="text"
+              value={manualName}
+              onChange={setManualName}
+            />
+            <TouchField
+              placeholder="Цена ₽"
+              title="Цена ₽"
+              mode="numeric"
+              value={manualPriceRub}
+              onChange={setManualPriceRub}
+            />
+            <button type="button" className="btn-primary" onClick={() => addManualLine()}>
+              Добавить
+            </button>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                setManualOpen(false);
+                setManualName("");
+                setManualPriceRub("");
+              }}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      )}
     </div>
+    </TouchKeyboardProvider>
   );
 }

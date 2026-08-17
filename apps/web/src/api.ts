@@ -118,6 +118,7 @@ export const api = {
       tabs: CatalogTabDto[];
       services: CatalogItemDto[];
       discounts: { id: string; name: string; type: string; value: number }[];
+      staffWashers: StaffWasherDto[];
     }>(`/api/catalog${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`),
   draft: (postId: number, token: string) =>
     request<OrderDto>(`/api/orders/draft?postId=${postId}`, { token }),
@@ -125,7 +126,11 @@ export const api = {
     request<{ orders: RecentOrderDto[] }>(`/api/orders/recent?limit=${limit}`, { token }),
   saveOrder: (
     id: string,
-    body: { items: { serviceId: string; qty: number }[]; discountId: string | null },
+    body: {
+      items: OrderItemInput[];
+      discountId: string | null;
+      staffWasherIds?: string[];
+    },
     token: string
   ) =>
     request<OrderDto>(`/api/orders/${id}`, {
@@ -279,6 +284,16 @@ export type AnprEventDto = {
   client: ClientDto | null;
 };
 
+export type OrderItemInput = {
+  serviceId?: string | null;
+  name?: string;
+  qty: number;
+  priceKopecks?: number;
+  basePriceKopecks?: number;
+  coefficientExtraKopecks?: number;
+  isManual?: boolean;
+};
+
 export type OrderDto = {
   id: string;
   number: number;
@@ -291,7 +306,18 @@ export type OrderDto = {
   discountId: string | null;
   vehicleClassId: string | null;
   vehicleClassName: string | null;
-  items: { serviceId: string; nameSnapshot: string; priceKopecks: number; qty: number }[];
+  staffWasherIds?: string[];
+  staffWashers?: { id: string; name: string; salaryPercent: number }[];
+  items: {
+    id?: string;
+    serviceId: string | null;
+    nameSnapshot: string;
+    priceKopecks: number;
+    qty: number;
+    isManual?: boolean;
+    basePriceKopecks?: number;
+    coefficientExtraKopecks?: number;
+  }[];
 };
 
 export type RecentOrderDto = {
@@ -325,6 +351,16 @@ export type CatalogItemDto = {
   active: boolean;
   sortOrder: number;
   tabId: string;
+  coefficientEnabled?: boolean;
+  coefficientStepKopecks?: number;
+};
+
+export type StaffWasherDto = {
+  id: string;
+  name: string;
+  salaryPercent: number;
+  active?: boolean;
+  sortOrder?: number;
 };
 
 export type VehicleClassDto = {
@@ -373,6 +409,8 @@ export const adminApi = {
       active: boolean;
       sortOrder: number;
       tabId: string;
+      coefficientEnabled?: boolean;
+      coefficientStepKopecks?: number;
     },
     id?: string
   ) =>
@@ -468,6 +506,26 @@ export const adminApi = {
         }),
   deleteWasher: (token: string, id: string) =>
     request<{ ok: boolean }>(`/api/admin/washers/${id}`, { method: "DELETE", token }),
+  staffWashers: (token: string) =>
+    request<StaffWasherDto[]>("/api/admin/staff-washers", { token }),
+  saveStaffWasher: (
+    token: string,
+    body: { name: string; salaryPercent: number; active: boolean; sortOrder?: number },
+    id?: string
+  ) =>
+    id
+      ? request(`/api/admin/staff-washers/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+          token,
+        })
+      : request("/api/admin/staff-washers", {
+          method: "POST",
+          body: JSON.stringify(body),
+          token,
+        }),
+  deleteStaffWasher: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/staff-washers/${id}`, { method: "DELETE", token }),
   terminal: (token: string) => request<Record<string, unknown>>("/api/admin/terminal", { token }),
   saveTerminal: (token: string, body: Record<string, unknown>) =>
     request("/api/admin/terminal", { method: "PUT", body: JSON.stringify(body), token }),
@@ -479,6 +537,30 @@ export const adminApi = {
       byPost: { label: string; totalKopecks: number; count: number }[];
       byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
     }>(`/api/admin/analytics?period=${period}`, { token }),
+  analyticsByWasher: (
+    token: string,
+    query: { mode: "shift" | "week" | "month" | "range"; from?: string; to?: string; shiftId?: string }
+  ) => {
+    const params = new URLSearchParams();
+    params.set("mode", query.mode);
+    if (query.from) params.set("from", query.from);
+    if (query.to) params.set("to", query.to);
+    if (query.shiftId) params.set("shiftId", query.shiftId);
+    return request<{
+      from: string;
+      to: string;
+      mode?: string;
+      shiftId?: string | null;
+      washers: {
+        id: string;
+        name: string;
+        salaryPercent: number;
+        orderCount: number;
+        revenueKopecks: number;
+        salaryKopecks: number;
+      }[];
+    }>(`/api/admin/analytics/by-washer?${params}`, { token });
+  },
   shifts: (token: string, limit = 40) =>
     request<{
       shifts: ShiftDto[];

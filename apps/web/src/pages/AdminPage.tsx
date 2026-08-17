@@ -11,6 +11,7 @@ import {
   type CatalogTabDto,
   type ShiftDto,
   type ShiftReportDto,
+  type StaffWasherDto,
   type VehicleClassDto,
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
@@ -21,6 +22,7 @@ type FixedTab =
   | "service-prices"
   | "discounts"
   | "washers"
+  | "staff-washers"
   | "terminal"
   | "analytics"
   | "security"
@@ -28,6 +30,8 @@ type FixedTab =
   | "catalog-tabs";
 type Tab = FixedTab | `catalog:${string}`;
 type NavGroupId = "analytics" | "catalog" | "settings" | "admin";
+type AnalyticsMode = "period" | "shifts" | "by-washer";
+type WasherAnalyticsPeriod = "shift" | "week" | "month" | "range";
 
 const MAIN_NAV: { id: NavGroupId; label: string }[] = [
   { id: "analytics", label: "Аналитика" },
@@ -38,7 +42,7 @@ const MAIN_NAV: { id: NavGroupId; label: string }[] = [
 
 function navGroupForTab(t: Tab): NavGroupId {
   if (t === "analytics") return "analytics";
-  if (t === "washers") return "settings";
+  if (t === "washers" || t === "staff-washers") return "settings";
   if (t === "updates" || t === "terminal" || t === "security") return "admin";
   return "catalog";
 }
@@ -49,6 +53,38 @@ type PriceItemRow = {
   priceKopecks: number | null;
   priceRub: string;
 };
+
+function priceDraftKey(classId: string, tabSlug: string) {
+  return `${classId}:${tabSlug}`;
+}
+
+function rowsToPricePayload(items: PriceItemRow[]) {
+  return items.map((item) => {
+    const trimmed = item.priceRub.trim().replace(",", ".");
+    if (trimmed === "") {
+      return { serviceId: item.serviceId, priceKopecks: null as number | null };
+    }
+    const n = Number(trimmed);
+    return {
+      serviceId: item.serviceId,
+      priceKopecks: Number.isFinite(n) ? Math.round(n * 100) : null,
+    };
+  });
+}
+
+function mapPriceApiItems(
+  items: { serviceId: string; name: string; priceKopecks: number | null }[]
+): PriceItemRow[] {
+  return items.map((item) => ({
+    serviceId: item.serviceId,
+    name: item.name,
+    priceKopecks: item.priceKopecks,
+    priceRub:
+      item.priceKopecks === null || item.priceKopecks === undefined
+        ? ""
+        : String(item.priceKopecks / 100),
+  }));
+}
 
 export function AdminPage() {
   const [token, setToken] = useState(getAdminToken());
@@ -64,6 +100,7 @@ export function AdminPage() {
     { id: string; name: string; type: string; value: number; active: boolean }[]
   >([]);
   const [washers, setWashers] = useState<{ id: string; name: string; active: boolean }[]>([]);
+  const [staffWashers, setStaffWashers] = useState<StaffWasherDto[]>([]);
   const [terminal, setTerminal] = useState({
     adapter: "emulator",
     host: "",
@@ -72,7 +109,7 @@ export function AdminPage() {
     notes: "",
   });
   const [period, setPeriod] = useState<"day" | "month">("day");
-  const [analyticsMode, setAnalyticsMode] = useState<"period" | "shifts">("period");
+  const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>("period");
   const [shiftList, setShiftList] = useState<ShiftDto[]>([]);
   const [selectedShiftReport, setSelectedShiftReport] = useState<ShiftReportDto | null>(null);
   const [analytics, setAnalytics] = useState<{
@@ -82,18 +119,54 @@ export function AdminPage() {
     byPost: { label: string; totalKopecks: number; count: number }[];
     byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
   } | null>(null);
+  const [washerAnalyticsPeriod, setWasherAnalyticsPeriod] =
+    useState<WasherAnalyticsPeriod>("shift");
+  const [washerAnalyticsFrom, setWasherAnalyticsFrom] = useState("");
+  const [washerAnalyticsTo, setWasherAnalyticsTo] = useState("");
+  const [washerAnalytics, setWasherAnalytics] = useState<{
+    from: string;
+    to: string;
+    washers: {
+      id: string;
+      name: string;
+      salaryPercent: number;
+      orderCount: number;
+      revenueKopecks: number;
+      salaryKopecks: number;
+    }[];
+  } | null>(null);
 
-  const [svcForm, setSvcForm] = useState({ name: "", description: "", priceRub: "", sortOrder: "0" });
+  const emptySvcForm = {
+    name: "",
+    description: "",
+    priceRub: "",
+    sortOrder: "0",
+    coefficientEnabled: false,
+    coefficientStepRub: "50",
+  };
+  const [svcForm, setSvcForm] = useState(emptySvcForm);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingServiceActive, setEditingServiceActive] = useState(true);
   const [classForm, setClassForm] = useState({ name: "", description: "", sortOrder: "10" });
   const [priceClassId, setPriceClassId] = useState<string | null>(null);
   const [priceTabSlug, setPriceTabSlug] = useState<"services" | "extra-services">("services");
   const [priceItems, setPriceItems] = useState<PriceItemRow[]>([]);
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, PriceItemRow[]>>({});
+  const [priceDirtyKeys, setPriceDirtyKeys] = useState<Record<string, boolean>>({});
+  const [pendingLeave, setPendingLeave] = useState<(() => void) | null>(null);
   const [tabForm, setTabForm] = useState({ name: "", sortOrder: "10" });
   const [discForm, setDiscForm] = useState({ name: "", type: "percent", value: "" });
+  const [editingDiscountId, setEditingDiscountId] = useState<string | null>(null);
+  const [editingDiscountActive, setEditingDiscountActive] = useState(true);
   const [washerForm, setWasherForm] = useState({ name: "", pin: "" });
+  const [staffWasherForm, setStaffWasherForm] = useState({
+    name: "",
+    salaryPercent: "0",
+  });
+  const [editingStaffWasherId, setEditingStaffWasherId] = useState<string | null>(null);
+  const [editingStaffWasherActive, setEditingStaffWasherActive] = useState(true);
   const [masterForm, setMasterForm] = useState({ current: "", next: "" });
+  const priceDirty = Object.keys(priceDirtyKeys).some((k) => priceDirtyKeys[k]);
   const [syncUrl, setSyncUrl] = useState("http://127.0.0.1:3002");
   const [syncMsg, setSyncMsg] = useState("");
   const [updateInfo, setUpdateInfo] = useState<{
@@ -167,12 +240,13 @@ export function AdminPage() {
 
   async function refresh() {
     if (!token) return;
-    const [tabs, s, vc, d, w, t, sync] = await Promise.all([
+    const [tabs, s, vc, d, w, sw, t, sync] = await Promise.all([
       adminApi.catalogTabs(token),
       adminApi.services(token),
       adminApi.vehicleClasses(token),
       adminApi.discounts(token),
       adminApi.washers(token),
+      adminApi.staffWashers(token),
       adminApi.terminal(token),
       adminApi.syncSettings(token),
     ]);
@@ -181,6 +255,7 @@ export function AdminPage() {
     setVehicleClasses(Array.isArray(vc) ? vc : []);
     setDiscounts(Array.isArray(d) ? d : []);
     setWashers(Array.isArray(w) ? w : []);
+    setStaffWashers(Array.isArray(sw) ? sw : []);
     setTerminal({
       adapter: String(t?.adapter ?? "emulator"),
       host: String(t?.host ?? ""),
@@ -208,6 +283,9 @@ export function AdminPage() {
   function forceLogout(message?: string) {
     setAdminToken(null);
     setToken(null);
+    setPendingLeave(null);
+    setPriceDrafts({});
+    setPriceDirtyKeys({});
     if (message) setError(message);
   }
 
@@ -221,20 +299,137 @@ export function AdminPage() {
     return () => window.removeEventListener("art:unauthorized", onUnauthorized);
   }, []);
 
-  async function loadServicePrices(classId: string, tabSlug = priceTabSlug) {
-    if (!token) return;
+  async function fetchPriceRows(classId: string, tabSlug: string) {
+    if (!token) return [];
     const res = await adminApi.servicePrices(token, classId, tabSlug);
-    setPriceItems(
-      res.items.map((item) => ({
-        serviceId: item.serviceId,
-        name: item.name,
-        priceKopecks: item.priceKopecks,
-        priceRub:
-          item.priceKopecks === null || item.priceKopecks === undefined
-            ? ""
-            : String(item.priceKopecks / 100),
-      }))
-    );
+    return mapPriceApiItems(res.items);
+  }
+
+  async function loadServicePrices(classId: string, tabSlug = priceTabSlug, force = false) {
+    if (!token) return;
+    const key = priceDraftKey(classId, tabSlug);
+    if (!force && priceDrafts[key]) {
+      setPriceItems(priceDrafts[key]);
+      return;
+    }
+    const rows = await fetchPriceRows(classId, tabSlug);
+    setPriceItems(rows);
+    setPriceDrafts((prev) => ({ ...prev, [key]: rows }));
+  }
+
+  function updatePriceRub(serviceId: string, priceRub: string) {
+    if (!priceClassId) return;
+    const key = priceDraftKey(priceClassId, priceTabSlug);
+    setPriceItems((rows) => {
+      const next = rows.map((r) => (r.serviceId === serviceId ? { ...r, priceRub } : r));
+      setPriceDrafts((prev) => ({ ...prev, [key]: next }));
+      return next;
+    });
+    setPriceDirtyKeys((prev) => ({ ...prev, [key]: true }));
+  }
+
+  async function saveDirtyServicePrices() {
+    if (!token) return;
+    const keys = Object.keys(priceDirtyKeys).filter((k) => priceDirtyKeys[k]);
+    if (keys.length === 0) return;
+    for (const key of keys) {
+      const [classId, tabSlug] = key.split(":");
+      if (!classId || !tabSlug) continue;
+      const items =
+        priceClassId &&
+        priceDraftKey(priceClassId, priceTabSlug) === key
+          ? priceItems
+          : priceDrafts[key];
+      if (!items) continue;
+      await adminApi.saveServicePrices(token, {
+        classId,
+        items: rowsToPricePayload(items),
+      });
+    }
+    setPriceDirtyKeys({});
+    if (priceClassId) {
+      const rows = await fetchPriceRows(priceClassId, priceTabSlug);
+      const key = priceDraftKey(priceClassId, priceTabSlug);
+      setPriceItems(rows);
+      setPriceDrafts((prev) => {
+        const next = { ...prev };
+        for (const k of keys) delete next[k];
+        next[key] = rows;
+        return next;
+      });
+    } else {
+      setPriceDrafts((prev) => {
+        const next = { ...prev };
+        for (const k of keys) delete next[k];
+        return next;
+      });
+    }
+    setSyncMsg("Цены сохранены");
+  }
+
+  function discardDirtyServicePrices() {
+    setPriceDirtyKeys({});
+    setPriceDrafts({});
+    setPendingLeave(null);
+    if (priceClassId) {
+      void loadServicePrices(priceClassId, priceTabSlug, true).catch((e) => {
+        if (isUnauthorized(e)) forceLogout(e.message);
+        else setError(e.message);
+      });
+    } else {
+      setPriceItems([]);
+    }
+  }
+
+  function selectNavGroup(group: NavGroupId) {
+    const staysOnPrices = tab === "service-prices" && group === "catalog";
+    requestLeaveServicePrices(() => {
+      setNavGroup(group);
+      if (group === "analytics") {
+        setTab("analytics");
+        return;
+      }
+      if (group === "catalog") {
+        if (navGroupForTab(tab) !== "catalog") {
+          const first = catalogSubItems[0];
+          if (first) setTab(first.id);
+        }
+        return;
+      }
+      if (group === "settings") {
+        setTab("washers");
+        return;
+      }
+      if (navGroupForTab(tab) !== "admin") setTab("updates");
+    }, staysOnPrices);
+  }
+
+  function isSubActive(item: { id: string }): boolean {
+    if (navGroup === "analytics") {
+      return tab === "analytics" && analyticsMode === item.id;
+    }
+    return tab === item.id;
+  }
+
+  function selectSubItem(item: { id: string }) {
+    const staysOnPrices =
+      navGroup === "catalog" && item.id === "service-prices" && tab === "service-prices";
+    requestLeaveServicePrices(() => {
+      if (navGroup === "analytics") {
+        setTab("analytics");
+        setAnalyticsMode(item.id as AnalyticsMode);
+        return;
+      }
+      setTab(item.id as Tab);
+    }, staysOnPrices);
+  }
+
+  function requestLeaveServicePrices(action: () => void, staysOnPrices = false) {
+    if (!staysOnPrices && tab === "service-prices" && priceDirty) {
+      setPendingLeave(() => action);
+      return;
+    }
+    action();
   }
 
   useEffect(() => {
@@ -254,15 +449,43 @@ export function AdminPage() {
       });
       return;
     }
-    setSelectedShiftReport(null);
-    adminApi
-      .shifts(token)
-      .then((r) => setShiftList(r.shifts ?? []))
-      .catch((e) => {
-        if (isUnauthorized(e)) forceLogout(e.message);
-        else setError(e.message);
-      });
-  }, [token, tab, period, analyticsMode]);
+    if (analyticsMode === "shifts") {
+      setSelectedShiftReport(null);
+      adminApi
+        .shifts(token)
+        .then((r) => setShiftList(r.shifts ?? []))
+        .catch((e) => {
+          if (isUnauthorized(e)) forceLogout(e.message);
+          else setError(e.message);
+        });
+      return;
+    }
+    if (analyticsMode === "by-washer") {
+      if (washerAnalyticsPeriod === "range" && (!washerAnalyticsFrom || !washerAnalyticsTo)) {
+        setWasherAnalytics(null);
+        return;
+      }
+      adminApi
+        .analyticsByWasher(token, {
+          mode: washerAnalyticsPeriod,
+          from: washerAnalyticsPeriod === "range" ? washerAnalyticsFrom : undefined,
+          to: washerAnalyticsPeriod === "range" ? washerAnalyticsTo : undefined,
+        })
+        .then(setWasherAnalytics)
+        .catch((e) => {
+          if (isUnauthorized(e)) forceLogout(e.message);
+          else setError(e.message);
+        });
+    }
+  }, [
+    token,
+    tab,
+    period,
+    analyticsMode,
+    washerAnalyticsPeriod,
+    washerAnalyticsFrom,
+    washerAnalyticsTo,
+  ]);
 
   useEffect(() => {
     if (!token || tab !== "service-prices" || !priceClassId) return;
@@ -293,7 +516,7 @@ export function AdminPage() {
     const sorted = catalogTabs
       .slice()
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
-    const services = sorted.find((ct) => ct.slug === "services");
+    const servicesTab = sorted.find((ct) => ct.slug === "services");
     const extras = sorted.find((ct) => ct.slug === "extra-services");
     const products = sorted.find((ct) => ct.slug === "products");
     const others = sorted.filter(
@@ -301,7 +524,7 @@ export function AdminPage() {
         ct.slug !== "services" && ct.slug !== "extra-services" && ct.slug !== "products"
     );
     const items: { id: Tab; label: string }[] = [];
-    if (services) items.push({ id: `catalog:${services.slug}`, label: services.name });
+    if (servicesTab) items.push({ id: `catalog:${servicesTab.slug}`, label: servicesTab.name });
     if (extras) items.push({ id: `catalog:${extras.slug}`, label: extras.name });
     items.push({ id: "vehicle-classes", label: "Классификация авто" });
     items.push({ id: "service-prices", label: "Цены на услуги" });
@@ -317,11 +540,15 @@ export function AdminPage() {
       return [
         { id: "period" as const, label: "Период" },
         { id: "shifts" as const, label: "Смены" },
+        { id: "by-washer" as const, label: "По мойщикам" },
       ];
     }
     if (navGroup === "catalog") return catalogSubItems;
     if (navGroup === "settings") {
-      return [{ id: "washers" as Tab, label: "Мойщики" }];
+      return [
+        { id: "washers" as Tab, label: "Операторы" },
+        { id: "staff-washers" as Tab, label: "Мойщики" },
+      ];
     }
     return [
       { id: "updates" as Tab, label: "Обновления" },
@@ -330,46 +557,16 @@ export function AdminPage() {
     ];
   }, [navGroup, catalogSubItems]);
 
-  function selectNavGroup(group: NavGroupId) {
-    setNavGroup(group);
-    if (group === "analytics") {
-      setTab("analytics");
-      return;
-    }
-    if (group === "catalog") {
-      if (navGroupForTab(tab) !== "catalog") {
-        const first = catalogSubItems[0];
-        if (first) setTab(first.id);
-      }
-      return;
-    }
-    if (group === "settings") {
-      setTab("washers");
-      return;
-    }
-    if (navGroupForTab(tab) !== "admin") setTab("updates");
-  }
-
-  function isSubActive(item: { id: string }): boolean {
-    if (navGroup === "analytics") {
-      return tab === "analytics" && analyticsMode === item.id;
-    }
-    return tab === item.id;
-  }
-
-  function selectSubItem(item: { id: string }) {
-    if (navGroup === "analytics") {
-      setTab("analytics");
-      setAnalyticsMode(item.id as "period" | "shifts");
-      return;
-    }
-    setTab(item.id as Tab);
-  }
-
   useEffect(() => {
     setEditingServiceId(null);
     setEditingServiceActive(true);
-    setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+    setSvcForm(emptySvcForm);
+    setEditingDiscountId(null);
+    setEditingDiscountActive(true);
+    setDiscForm({ name: "", type: "percent", value: "" });
+    setEditingStaffWasherId(null);
+    setEditingStaffWasherActive(true);
+    setStaffWasherForm({ name: "", salaryPercent: "0" });
   }, [tab]);
 
   if (!token) {
@@ -430,10 +627,14 @@ export function AdminPage() {
           <button
             type="button"
             className="topbar-pill"
-            onClick={() => {
-              setAdminToken(null);
-              setToken(null);
-            }}
+            onClick={() =>
+              requestLeaveServicePrices(() => {
+                setAdminToken(null);
+                setToken(null);
+                setPriceDrafts({});
+                setPriceDirtyKeys({});
+              })
+            }
           >
             Выйти
           </button>
@@ -442,6 +643,68 @@ export function AdminPage() {
 
       <main className="content">
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+        {pendingLeave && (
+          <div
+            className="panel stack"
+            role="dialog"
+            aria-modal="true"
+            style={{
+              position: "fixed",
+              inset: "0",
+              zIndex: 50,
+              display: "grid",
+              placeItems: "center",
+              background: "color-mix(in srgb, black 45%, transparent)",
+              padding: "1rem",
+            }}
+          >
+            <div className="panel stack" style={{ width: "min(420px, 100%)" }}>
+              <h2 className="h2" style={{ marginBottom: 0 }}>
+                Несохранённые цены
+              </h2>
+              <p className="muted" style={{ marginTop: 0 }}>
+                Есть изменения цен на услуги. Сохранить перед уходом?
+              </p>
+              <div className="row" style={{ flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    const next = pendingLeave;
+                    void saveDirtyServicePrices()
+                      .then(() => {
+                        setPendingLeave(null);
+                        next();
+                      })
+                      .catch((e) =>
+                        setError(e instanceof Error ? e.message : "Ошибка сохранения цен")
+                      );
+                  }}
+                >
+                  Сохранить
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    const next = pendingLeave;
+                    discardDirtyServicePrices();
+                    next();
+                  }}
+                >
+                  Не сохранять
+                </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => setPendingLeave(null)}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         <nav className="admin-nav" aria-label="Разделы админки">
           {MAIN_NAV.map((g) => (
             <button
@@ -505,6 +768,10 @@ export function AdminPage() {
                               description: s.description ?? "",
                               priceRub: (s.priceKopecks / 100).toString(),
                               sortOrder: String(s.sortOrder),
+                              coefficientEnabled: Boolean(s.coefficientEnabled),
+                              coefficientStepRub: String(
+                                (s.coefficientStepKopecks ?? 5000) / 100
+                              ),
                             });
                           }}
                         >
@@ -524,6 +791,8 @@ export function AdminPage() {
                                   active: !s.active,
                                   sortOrder: s.sortOrder,
                                   tabId: s.tabId,
+                                  coefficientEnabled: s.coefficientEnabled,
+                                  coefficientStepKopecks: s.coefficientStepKopecks,
                                 },
                                 s.id
                               )
@@ -579,6 +848,32 @@ export function AdminPage() {
                   onChange={(priceRub) => setSvcForm((f) => ({ ...f, priceRub }))}
                 />
               )}
+              {isClassPricedTab && (
+                <>
+                  <label className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+                    <input
+                      type="checkbox"
+                      checked={svcForm.coefficientEnabled}
+                      onChange={(e) =>
+                        setSvcForm((f) => ({ ...f, coefficientEnabled: e.target.checked }))
+                      }
+                    />
+                    Коэффициент
+                  </label>
+                  {svcForm.coefficientEnabled && (
+                    <TouchField
+                      placeholder="Шаг ₽"
+                      title="Шаг коэффициента ₽"
+                      mode="numeric"
+                      value={svcForm.coefficientStepRub}
+                      onChange={(coefficientStepRub) =>
+                        setSvcForm((f) => ({ ...f, coefficientStepRub }))
+                      }
+                      style={{ maxWidth: "7rem" }}
+                    />
+                  )}
+                </>
+              )}
               <button
                 type="button"
                 className="btn-primary"
@@ -593,6 +888,10 @@ export function AdminPage() {
                   const priceKopecks = isClassPricedTab
                     ? (existing?.priceKopecks ?? 0)
                     : Math.round(Number(svcForm.priceRub) * 100);
+                  const stepRub = Number(String(svcForm.coefficientStepRub).replace(",", "."));
+                  const coefficientStepKopecks = Number.isFinite(stepRub)
+                    ? Math.round(stepRub * 100)
+                    : 5000;
                   void adminApi
                     .saveService(
                       token,
@@ -605,11 +904,19 @@ export function AdminPage() {
                         active: editingServiceId ? editingServiceActive : true,
                         sortOrder: Number(svcForm.sortOrder) || existing?.sortOrder || 0,
                         tabId: activeCatalogTab.id,
+                        ...(isClassPricedTab
+                          ? {
+                              coefficientEnabled: svcForm.coefficientEnabled,
+                              coefficientStepKopecks: svcForm.coefficientEnabled
+                                ? coefficientStepKopecks || 5000
+                                : 5000,
+                            }
+                          : {}),
                       },
                       editingServiceId ?? undefined
                     )
                     .then(() => {
-                      setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+                      setSvcForm(emptySvcForm);
                       setEditingServiceId(null);
                       setEditingServiceActive(true);
                       return refresh();
@@ -626,7 +933,7 @@ export function AdminPage() {
                   onClick={() => {
                     setEditingServiceId(null);
                     setEditingServiceActive(true);
-                    setSvcForm({ name: "", description: "", priceRub: "", sortOrder: "0" });
+                    setSvcForm(emptySvcForm);
                   }}
                 >
                   Отмена
@@ -746,6 +1053,11 @@ export function AdminPage() {
               Цены услуг и доп.услуг по классу авто. Пустое поле — позиция скрыта на кассе для
               этого класса.
             </p>
+            {priceDirty && (
+              <p className="muted" style={{ marginTop: 0 }}>
+                Есть несохранённые изменения
+              </p>
+            )}
             {activeVehicleClasses.length === 0 ? (
               <p className="muted">Сначала добавьте активные классы во вкладке «Классификация авто».</p>
             ) : (
@@ -795,13 +1107,7 @@ export function AdminPage() {
                             title={`Цена: ${item.name}`}
                             mode="numeric"
                             value={item.priceRub}
-                            onChange={(priceRub) =>
-                              setPriceItems((rows) =>
-                                rows.map((r) =>
-                                  r.serviceId === item.serviceId ? { ...r, priceRub } : r
-                                )
-                              )
-                            }
+                            onChange={(priceRub) => updatePriceRub(item.serviceId, priceRub)}
                           />
                         </td>
                       </tr>
@@ -821,23 +1127,23 @@ export function AdminPage() {
                   disabled={!priceClassId}
                   onClick={() => {
                     if (!priceClassId) return;
+                    const key = priceDraftKey(priceClassId, priceTabSlug);
                     void adminApi
                       .saveServicePrices(token, {
                         classId: priceClassId,
-                        items: priceItems.map((item) => {
-                          const trimmed = item.priceRub.trim().replace(",", ".");
-                          if (trimmed === "") {
-                            return { serviceId: item.serviceId, priceKopecks: null };
-                          }
-                          const n = Number(trimmed);
-                          return {
-                            serviceId: item.serviceId,
-                            priceKopecks: Number.isFinite(n) ? Math.round(n * 100) : null,
-                          };
-                        }),
+                        items: rowsToPricePayload(priceItems),
                       })
-                      .then(() => loadServicePrices(priceClassId, priceTabSlug))
-                      .then(() => setSyncMsg("Цены сохранены"))
+                      .then(async () => {
+                        setPriceDirtyKeys((prev) => {
+                          const next = { ...prev };
+                          delete next[key];
+                          return next;
+                        });
+                        const rows = await fetchPriceRows(priceClassId, priceTabSlug);
+                        setPriceItems(rows);
+                        setPriceDrafts((prev) => ({ ...prev, [key]: rows }));
+                        setSyncMsg("Цены сохранены");
+                      })
                       .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"));
                   }}
                 >
@@ -964,12 +1270,30 @@ export function AdminPage() {
               </thead>
               <tbody>
                 {discounts.map((d) => (
-                  <tr key={d.id}>
+                  <tr key={d.id} className={editingDiscountId === d.id ? "row-editing" : undefined}>
                     <td>{d.name}</td>
                     <td>{d.type}</td>
                     <td>{d.type === "percent" ? `${d.value}%` : formatRub(d.value)}</td>
                     <td className="table-actions">
                       <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            setEditingDiscountId(d.id);
+                            setEditingDiscountActive(d.active);
+                            setDiscForm({
+                              name: d.name,
+                              type: d.type,
+                              value:
+                                d.type === "fixed"
+                                  ? String(d.value / 100)
+                                  : String(d.value),
+                            });
+                          }}
+                        >
+                          Изменить
+                        </button>
                         <button
                           type="button"
                           className="btn-ghost"
@@ -1031,27 +1355,49 @@ export function AdminPage() {
                   const raw = Number(discForm.value);
                   const value = discForm.type === "fixed" ? Math.round(raw * 100) : raw;
                   void adminApi
-                    .saveDiscount(token, {
-                      name: discForm.name,
-                      type: discForm.type,
-                      value,
-                      active: true,
-                    })
+                    .saveDiscount(
+                      token,
+                      {
+                        name: discForm.name,
+                        type: discForm.type,
+                        value,
+                        active: editingDiscountId ? editingDiscountActive : true,
+                      },
+                      editingDiscountId ?? undefined
+                    )
                     .then(() => {
                       setDiscForm({ name: "", type: "percent", value: "" });
+                      setEditingDiscountId(null);
+                      setEditingDiscountActive(true);
                       return refresh();
                     });
                 }}
               >
-                Добавить
+                {editingDiscountId ? "Сохранить" : "Добавить"}
               </button>
+              {editingDiscountId && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setEditingDiscountId(null);
+                    setEditingDiscountActive(true);
+                    setDiscForm({ name: "", type: "percent", value: "" });
+                  }}
+                >
+                  Отмена
+                </button>
+              )}
             </div>
           </div>
         )}
 
         {tab === "washers" && (
           <div className="panel stack">
-            <h2 className="h2">Мойщики</h2>
+            <h2 className="h2">Операторы</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Операторы кассы: вход по PIN, открытие и закрытие смен.
+            </p>
             <table className="table">
               <thead>
                 <tr>
@@ -1080,7 +1426,7 @@ export function AdminPage() {
                           type="button"
                           className="btn-danger"
                           onClick={() =>
-                            void removeWithConfirm(`Удалить мойщика «${w.name}»?`, () =>
+                            void removeWithConfirm(`Удалить оператора «${w.name}»?`, () =>
                               adminApi.deleteWasher(token, w.id)
                             )
                           }
@@ -1096,14 +1442,14 @@ export function AdminPage() {
             <div className="row">
               <TouchField
                 placeholder="Имя"
-                title="Имя мойщика"
+                title="Имя оператора"
                 mode="text"
                 value={washerForm.name}
                 onChange={(name) => setWasherForm((f) => ({ ...f, name }))}
               />
               <TouchField
                 placeholder="PIN 4–6"
-                title="PIN мойщика"
+                title="PIN оператора"
                 mode="pin"
                 maxLength={6}
                 secret
@@ -1128,6 +1474,157 @@ export function AdminPage() {
               >
                 Добавить
               </button>
+            </div>
+          </div>
+        )}
+
+        {tab === "staff-washers" && (
+          <div className="panel stack">
+            <h2 className="h2">Мойщики</h2>
+            <p className="muted" style={{ marginTop: 0 }}>
+              Персонал заказа: имя и процент зарплаты от доли выручки (без PIN).
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Имя</th>
+                  <th>Зарплата %</th>
+                  <th className="table-actions">Действия</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staffWashers.map((w) => (
+                  <tr
+                    key={w.id}
+                    className={editingStaffWasherId === w.id ? "row-editing" : undefined}
+                  >
+                    <td>{w.name}</td>
+                    <td>{w.salaryPercent}%</td>
+                    <td className="table-actions">
+                      <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            setEditingStaffWasherId(w.id);
+                            setEditingStaffWasherActive(w.active !== false);
+                            setStaffWasherForm({
+                              name: w.name,
+                              salaryPercent: String(w.salaryPercent ?? 0),
+                            });
+                          }}
+                        >
+                          Изменить
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          onClick={() =>
+                            void adminApi
+                              .saveStaffWasher(
+                                token,
+                                {
+                                  name: w.name,
+                                  salaryPercent: w.salaryPercent,
+                                  active: !(w.active !== false),
+                                  sortOrder: w.sortOrder,
+                                },
+                                w.id
+                              )
+                              .then(refresh)
+                          }
+                        >
+                          {w.active !== false ? "Активен" : "Выкл"}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-danger"
+                          onClick={() =>
+                            void removeWithConfirm(`Удалить мойщика «${w.name}»?`, () =>
+                              adminApi.deleteStaffWasher(token, w.id)
+                            )
+                          }
+                        >
+                          Удалить
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {staffWashers.length === 0 && (
+              <p className="muted">Пока пусто — добавьте первого мойщика ниже.</p>
+            )}
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              <TouchField
+                placeholder="Имя"
+                title="Имя мойщика"
+                mode="text"
+                value={staffWasherForm.name}
+                onChange={(name) => setStaffWasherForm((f) => ({ ...f, name }))}
+              />
+              <TouchField
+                placeholder="Зарплата %"
+                title="Зарплата %"
+                mode="numeric"
+                value={staffWasherForm.salaryPercent}
+                onChange={(salaryPercent) =>
+                  setStaffWasherForm((f) => ({ ...f, salaryPercent }))
+                }
+                style={{ maxWidth: "8rem" }}
+              />
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => {
+                  if (!staffWasherForm.name.trim()) {
+                    setError("Укажите имя мойщика");
+                    return;
+                  }
+                  const raw = Number(String(staffWasherForm.salaryPercent).replace(",", "."));
+                  if (!Number.isFinite(raw) || raw < 0 || raw > 100) {
+                    setError("Зарплата % должна быть от 0 до 100");
+                    return;
+                  }
+                  const existing = editingStaffWasherId
+                    ? staffWashers.find((x) => x.id === editingStaffWasherId)
+                    : null;
+                  void adminApi
+                    .saveStaffWasher(
+                      token,
+                      {
+                        name: staffWasherForm.name.trim(),
+                        salaryPercent: Math.round(raw),
+                        active: editingStaffWasherId ? editingStaffWasherActive : true,
+                        sortOrder: existing?.sortOrder ?? 0,
+                      },
+                      editingStaffWasherId ?? undefined
+                    )
+                    .then(() => {
+                      setStaffWasherForm({ name: "", salaryPercent: "0" });
+                      setEditingStaffWasherId(null);
+                      setEditingStaffWasherActive(true);
+                      return refresh();
+                    })
+                    .catch((e) => setError(e instanceof Error ? e.message : "Ошибка"));
+                }}
+              >
+                {editingStaffWasherId ? "Сохранить" : "Добавить"}
+              </button>
+              {editingStaffWasherId && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setEditingStaffWasherId(null);
+                    setEditingStaffWasherActive(true);
+                    setStaffWasherForm({ name: "", salaryPercent: "0" });
+                  }}
+                >
+                  Отмена
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1210,7 +1707,11 @@ export function AdminPage() {
         {tab === "analytics" && (
           <div className="panel stack">
             <h2 className="h2" style={{ marginBottom: 0 }}>
-              {analyticsMode === "shifts" ? "Аналитика · Смены" : "Аналитика · Период"}
+              {analyticsMode === "shifts"
+                ? "Аналитика · Смены"
+                : analyticsMode === "by-washer"
+                  ? "Аналитика · По мойщикам"
+                  : "Аналитика · Период"}
             </h2>
 
             {analyticsMode === "period" && (
@@ -1321,6 +1822,87 @@ export function AdminPage() {
                       );
                     })}
                   </ul>
+                )}
+              </>
+            )}
+
+            {analyticsMode === "by-washer" && (
+              <>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Выручка заказа делится поровну между мойщиками в составе. Зарплата — доля × %.
+                </p>
+                <div className="row" style={{ flexWrap: "wrap" }}>
+                  {(
+                    [
+                      ["shift", "Смена"],
+                      ["week", "Неделя"],
+                      ["month", "Месяц"],
+                      ["range", "Даты"],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`topbar-pill${washerAnalyticsPeriod === mode ? " active" : ""}`}
+                      onClick={() => setWasherAnalyticsPeriod(mode)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {washerAnalyticsPeriod === "range" && (
+                  <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>С</label>
+                      <input
+                        type="date"
+                        value={washerAnalyticsFrom}
+                        onChange={(e) => setWasherAnalyticsFrom(e.target.value)}
+                      />
+                    </div>
+                    <div className="field" style={{ margin: 0 }}>
+                      <label>По</label>
+                      <input
+                        type="date"
+                        value={washerAnalyticsTo}
+                        onChange={(e) => setWasherAnalyticsTo(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+                {washerAnalyticsPeriod === "range" &&
+                  (!washerAnalyticsFrom || !washerAnalyticsTo) && (
+                    <p className="muted">Укажите даты «С» и «По».</p>
+                  )}
+                {washerAnalytics && (
+                  <>
+                    <p className="muted" style={{ marginTop: 0 }}>
+                      Период: {washerAnalytics.from} — {washerAnalytics.to}
+                    </p>
+                    <table className="table">
+                      <thead>
+                        <tr>
+                          <th>Имя</th>
+                          <th>Заказов</th>
+                          <th>Выручка</th>
+                          <th>Зарплата %</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {washerAnalytics.washers.map((w) => (
+                          <tr key={w.id}>
+                            <td>{w.name}</td>
+                            <td>{w.orderCount}</td>
+                            <td>{formatRub(w.revenueKopecks)}</td>
+                            <td>{w.salaryPercent}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {washerAnalytics.washers.length === 0 && (
+                      <p className="muted">Нет данных за выбранный период.</p>
+                    )}
+                  </>
                 )}
               </>
             )}
