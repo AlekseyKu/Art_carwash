@@ -332,27 +332,37 @@ export function PosPage() {
   function toggleService(id: string) {
     const svc = catalog?.services.find((s) => s.id === id);
     if (!svc) return;
+    const servicesTabId = catalog?.tabs.find((t) => t.slug === "services")?.id;
+    const isMainService = Boolean(servicesTabId && svc.tabId === servicesTabId);
     const exists = cartLines.some((l) => l.serviceId === id);
+    const newLine: CartLine = {
+      key: id,
+      serviceId: id,
+      name: svc.name,
+      description: svc.description ?? "",
+      qty: 1,
+      basePriceKopecks: svc.priceKopecks,
+      coefficientExtraKopecks: 0,
+      priceKopecks: svc.priceKopecks,
+      isManual: false,
+      coefficientEnabled: Boolean(svc.coefficientEnabled),
+      coefficientStepKopecks: svc.coefficientStepKopecks ?? 5000,
+    };
     let next: CartLine[];
     if (exists) {
       next = cartLines.filter((l) => l.serviceId !== id);
-    } else {
+    } else if (isMainService && servicesTabId) {
+      // Вкладка «Услуги»: только одна позиция — новая заменяет предыдущую
       next = [
-        ...cartLines,
-        {
-          key: id,
-          serviceId: id,
-          name: svc.name,
-          description: svc.description ?? "",
-          qty: 1,
-          basePriceKopecks: svc.priceKopecks,
-          coefficientExtraKopecks: 0,
-          priceKopecks: svc.priceKopecks,
-          isManual: false,
-          coefficientEnabled: Boolean(svc.coefficientEnabled),
-          coefficientStepKopecks: svc.coefficientStepKopecks ?? 5000,
-        },
+        ...cartLines.filter((l) => {
+          if (l.isManual || !l.serviceId) return true;
+          const other = catalog?.services.find((s) => s.id === l.serviceId);
+          return !other || other.tabId !== servicesTabId;
+        }),
+        newLine,
       ];
+    } else {
+      next = [...cartLines, newLine];
     }
     setCartLines(next);
     setQty(qtyFromLines(next));

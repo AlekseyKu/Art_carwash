@@ -759,6 +759,7 @@ a.topbar-pill {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  overflow: auto;
 }
 
 .pos-cart-header {
@@ -767,16 +768,13 @@ a.topbar-pill {
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.65rem;
+  flex-shrink: 0;
 }
 
 .pos-cart-list {
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 0.15rem;
 }
 
 .pos-cart-line {

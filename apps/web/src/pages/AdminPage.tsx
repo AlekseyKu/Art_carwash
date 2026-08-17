@@ -1957,6 +1957,86 @@ export function AdminPage() {
 
         {tab === "updates" && (
           <div className="panel stack">
+            {updateInfo?.latestVersion && (
+              <p style={{ marginTop: 0 }}>
+                На GitHub: <strong>{updateInfo.latestVersion}</strong>
+                {updateInfo.updateAvailable ? " · есть обновление" : " · актуально"}
+              </p>
+            )}
+            {updateInfo?.message && <p className="muted">{updateInfo.message}</p>}
+            {updateInfo?.releaseNotes && (
+              <pre
+                style={{
+                  whiteSpace: "pre-wrap",
+                  fontSize: "0.85rem",
+                  background: "color-mix(in srgb, var(--brand-silver-soft) 40%, white)",
+                  padding: "0.75rem",
+                  borderRadius: "8px",
+                  maxHeight: "12rem",
+                  overflow: "auto",
+                }}
+              >
+                {updateInfo.releaseNotes}
+              </pre>
+            )}
+            <div className="row">
+              <button
+                type="button"
+                className="btn-secondary"
+                disabled={updateBusy || !token}
+                onClick={() => {
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesCheck(token!)
+                    .then((r) => setUpdateInfo(r))
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Проверить обновления
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                disabled={updateBusy || !token || !updateInfo?.updateAvailable}
+                onClick={() => {
+                  if (!window.confirm("Скачать обновление с GitHub и перезапустить кассу?")) {
+                    return;
+                  }
+                  setUpdateBusy(true);
+                  setError("");
+                  void adminApi
+                    .updatesApply(token!)
+                    .then((r) => {
+                      setUpdateInfo((prev) => ({ ...prev, ...r, updateAvailable: false }));
+                      if (r.restart) {
+                        setSyncMsg(
+                          "Обновление установлено. Касса закроется и через пару секунд откроется снова. Если окно не появилось — запустите ярлык ArtCarwash."
+                        );
+                      }
+                    })
+                    .catch((e) => setError(e.message))
+                    .finally(() => setUpdateBusy(false));
+                }}
+              >
+                Обновить
+              </button>
+              {updateInfo?.releaseUrl && (
+                <a
+                  className="btn-ghost"
+                  href={updateInfo.releaseUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ textDecoration: "none", display: "grid", placeItems: "center" }}
+                >
+                  Открыть Release
+                </a>
+              )}
+            </div>
+            {updateBusy && <p className="muted">Подождите…</p>}
+            {syncMsg && <p className="muted">{syncMsg}</p>}
+
             <h2 className="h2">Обновления кассы</h2>
             <p className="muted" style={{ marginTop: 0 }}>
               Проверка и установка с GitHub Releases (
@@ -2070,85 +2150,6 @@ export function AdminPage() {
                 Удалить token
               </button>
             </div>
-            {updateInfo?.latestVersion && (
-              <p>
-                На GitHub: <strong>{updateInfo.latestVersion}</strong>
-                {updateInfo.updateAvailable ? " · есть обновление" : " · актуально"}
-              </p>
-            )}
-            {updateInfo?.message && <p className="muted">{updateInfo.message}</p>}
-            {updateInfo?.releaseNotes && (
-              <pre
-                style={{
-                  whiteSpace: "pre-wrap",
-                  fontSize: "0.85rem",
-                  background: "color-mix(in srgb, var(--brand-silver-soft) 40%, white)",
-                  padding: "0.75rem",
-                  borderRadius: "8px",
-                  maxHeight: "12rem",
-                  overflow: "auto",
-                }}
-              >
-                {updateInfo.releaseNotes}
-              </pre>
-            )}
-            <div className="row">
-              <button
-                type="button"
-                className="btn-secondary"
-                disabled={updateBusy || !token}
-                onClick={() => {
-                  setUpdateBusy(true);
-                  setError("");
-                  void adminApi
-                    .updatesCheck(token!)
-                    .then((r) => setUpdateInfo(r))
-                    .catch((e) => setError(e.message))
-                    .finally(() => setUpdateBusy(false));
-                }}
-              >
-                Проверить обновления
-              </button>
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={updateBusy || !token || !updateInfo?.updateAvailable}
-                onClick={() => {
-                  if (!window.confirm("Скачать обновление с GitHub и перезапустить кассу?")) {
-                    return;
-                  }
-                  setUpdateBusy(true);
-                  setError("");
-                  void adminApi
-                    .updatesApply(token!)
-                    .then((r) => {
-                      setUpdateInfo((prev) => ({ ...prev, ...r, updateAvailable: false }));
-                      if (r.restart) {
-                        setSyncMsg(
-                          "Обновление установлено. Касса закроется и через пару секунд откроется снова. Если окно не появилось — запустите ярлык ArtCarwash."
-                        );
-                      }
-                    })
-                    .catch((e) => setError(e.message))
-                    .finally(() => setUpdateBusy(false));
-                }}
-              >
-                Обновить
-              </button>
-              {updateInfo?.releaseUrl && (
-                <a
-                  className="btn-ghost"
-                  href={updateInfo.releaseUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ textDecoration: "none", display: "grid", placeItems: "center" }}
-                >
-                  Открыть Release
-                </a>
-              )}
-            </div>
-            {updateBusy && <p className="muted">Подождите…</p>}
-            {syncMsg && <p className="muted">{syncMsg}</p>}
           </div>
         )}
 
