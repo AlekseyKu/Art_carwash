@@ -9,6 +9,7 @@
 | [03-backlog-ideas.md](03-backlog-ideas.md) | Бэклог идей: мойка / админ / касса (+ кофе, акции, подсказки) | backlog |
 | [04-vehicle-classes-service-prices.md](04-vehicle-classes-service-prices.md) | Классификация авто + цены услуг по классу | implemented |
 | [05-operators-staff-order-ux.md](05-operators-staff-order-ux.md) | Операторы/мойщики, коэффициент, UX заказа, аналитика, OSK | implemented |
+| [06-customer-pwa.md](06-customer-pwa.md) | Клиентское PWA: онбординг, прайс, запись, кабинет, календарь на кассе | spec |
 
 ## Как добавлять
 
