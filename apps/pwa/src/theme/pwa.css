@@ -22,7 +22,7 @@
 .install-hint__icon {
   display: flex;
   flex-shrink: 0;
-  color: var(--brand-primary);
+  color: var(--brand-primary-bright);
 }
 
 .install-hint__icon svg {

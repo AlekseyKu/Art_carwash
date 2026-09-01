@@ -30,16 +30,18 @@
 }
 
 .ui-btn--primary {
-  background: var(--brand-primary);
-  color: #fff;
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--brand-primary);
 }
 
 .ui-btn--primary:hover:not(:disabled) {
-  background: var(--brand-primary-hover);
+  background: var(--brand-primary-soft);
+  border-color: var(--brand-primary-hover);
 }
 
 .ui-btn--secondary {
-  background: var(--surface-elevated);
+  background: transparent;
   color: var(--ink);
   border-color: var(--border);
 }
@@ -156,13 +158,13 @@
 }
 
 .ui-chip:hover:not(:disabled) {
-  border-color: var(--brand-graphite-muted);
+  border-color: var(--palette-brown-gray);
 }
 
 .ui-chip--active {
-  background: var(--brand-primary-soft);
-  border-color: var(--brand-primary-bright);
-  color: var(--brand-primary-soft-text);
+  background: transparent;
+  border-color: var(--brand-primary);
+  color: var(--ink);
 }
 
 .ui-chip:disabled {

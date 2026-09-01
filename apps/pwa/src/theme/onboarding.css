@@ -1,4 +1,4 @@
-/* Splash — графит + акцент «Гранат» (06-brand.md) */
+/* Splash — грифель + неоновый красный */
 
 .splash-screen {
   position: relative;
@@ -6,8 +6,8 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  background: var(--brand-graphite);
-  color: #fff;
+  background: var(--surface);
+  color: var(--ink);
   text-align: center;
   padding: var(--space-6);
   padding-top: calc(var(--space-6) + env(safe-area-inset-top));
@@ -19,9 +19,9 @@
   inset: 0;
   opacity: 0.35;
   background:
-    radial-gradient(circle at 15% 20%, rgba(166, 0, 0, 0.18) 0, transparent 42%),
-    radial-gradient(circle at 85% 75%, rgba(166, 0, 0, 0.12) 0, transparent 38%),
-    radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.04) 0, transparent 55%);
+    radial-gradient(circle at 15% 20%, rgba(243, 74, 74, 0.14) 0, transparent 42%),
+    radial-gradient(circle at 85% 75%, rgba(241, 211, 188, 0.1) 0, transparent 38%),
+    radial-gradient(circle at 50% 100%, rgba(97, 80, 73, 0.12) 0, transparent 55%);
   pointer-events: none;
 }
 
@@ -41,11 +41,9 @@
   width: 88px;
   height: 88px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow:
-    inset 0 -3px 0 var(--brand-primary),
-    0 12px 32px rgba(0, 0, 0, 0.24);
+  background: var(--surface-elevated);
+  border: 1px solid var(--brand-primary);
+  box-shadow: var(--shadow-card);
 }
 
 .splash-mark__logo {
@@ -77,7 +75,7 @@
   margin: 0;
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
-  color: var(--brand-graphite-soft);
+  color: var(--muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -145,7 +143,8 @@
   width: 36px;
   height: 36px;
   border-radius: var(--radius-sm);
-  background: var(--brand-primary-soft);
+  background: transparent;
+  border: 1px solid var(--brand-primary);
   color: var(--brand-primary-soft-text);
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);

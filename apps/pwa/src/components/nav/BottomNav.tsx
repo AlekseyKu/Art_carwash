@@ -1,47 +1,42 @@
-import type { ReactNode } from "react";
+import type { ComponentType, SVGProps } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import {
+  CalendarDaysIcon,
+  DocumentTextIcon,
+  UserIcon,
+} from "@heroicons/react/24/outline";
 import { BrandLogo } from "../brand/BrandLogo";
 import { ExpandingLabel } from "./ExpandingLabel";
+
+type NavIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
 interface NavTab {
   to: string;
   label: string;
-  icon: ReactNode;
+  icon: NavIcon;
 }
 
 const tabs: NavTab[] = [
   {
     to: "/app/price",
     label: "Прайс",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <path d="M4 6h16M4 12h16M4 18h10" strokeLinecap="round" />
-      </svg>
-    ),
+    icon: DocumentTextIcon,
   },
   {
     to: "/app/booking",
     label: "Запись",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <rect x="3" y="4" width="18" height="18" rx="2" />
-        <path d="M16 2v4M8 2v4M3 10h18" strokeLinecap="round" />
-      </svg>
-    ),
+    icon: CalendarDaysIcon,
   },
   {
     to: "/app/cabinet",
     label: "Кабинет",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-        <circle cx="12" cy="8" r="4" />
-        <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" strokeLinecap="round" />
-      </svg>
-    ),
+    icon: UserIcon,
   },
 ];
 
 function NavSegment({ tab }: { tab: NavTab }) {
+  const Icon = tab.icon;
+
   return (
     <NavLink
       to={tab.to}
@@ -55,7 +50,9 @@ function NavSegment({ tab }: { tab: NavTab }) {
     >
       {({ isActive }) => (
         <>
-          <span className="bottom-nav__icon">{tab.icon}</span>
+          <span className="bottom-nav__icon">
+            <Icon aria-hidden />
+          </span>
           <ExpandingLabel label={tab.label} expanded={isActive} />
         </>
       )}

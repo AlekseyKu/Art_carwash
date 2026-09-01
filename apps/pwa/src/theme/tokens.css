@@ -1,26 +1,32 @@
 :root {
-  /* Brand — Гранат (06-brand.md) */
-  --brand-primary: #a60000;
-  --brand-primary-hover: #850000;
-  --brand-primary-bright: #a60000;
-  --brand-primary-soft: rgba(166, 0, 0, 0.32);
-  --brand-primary-soft-text: #ff9999;
-  --brand-graphite: #303236;
-  --brand-graphite-muted: #5c6066;
-  --brand-graphite-soft: #a3a8b0;
+  /* Палитра */
+  --palette-crepe: #f1d3bc;
+  --palette-brown-gray: #615049;
+  --palette-neon-red: #f34a4a;
+  --palette-slate: #262f34;
 
-  /* Semantic — тёмная тема (графит) */
-  --ink: #f3f4f6;
-  --muted: #a3a8b0;
-  --text-placeholder: #8a9099;
-  --surface: #303236;
-  --surface-elevated: #3c3f45;
-  --surface-hover: #454950;
-  --surface-sunken: #2a2d32;
-  --border: #52565e;
-  --border-subtle: #454950;
+  /* Brand — неоновый красный (обводки, акценты) */
+  --brand-primary: var(--palette-neon-red);
+  --brand-primary-hover: #ff5e5e;
+  --brand-primary-bright: var(--palette-neon-red);
+  --brand-primary-soft: rgba(243, 74, 74, 0.12);
+  --brand-primary-soft-text: var(--palette-crepe);
+  --brand-graphite: var(--palette-slate);
+  --brand-graphite-muted: var(--palette-brown-gray);
+  --brand-graphite-soft: var(--palette-crepe);
+
+  /* Semantic — грифель + тёплые нейтрали */
+  --ink: var(--palette-crepe);
+  --muted: #a8948c;
+  --text-placeholder: var(--palette-brown-gray);
+  --surface: var(--palette-slate);
+  --surface-elevated: #2f383e;
+  --surface-hover: #3a454c;
+  --surface-sunken: #1e262a;
+  --border: var(--palette-brown-gray);
+  --border-subtle: #343d42;
   --success: #3cb87a;
-  --danger: #e86868;
+  --danger: #f34a4a;
   --warning: #e0a040;
 
   /* Typography */
@@ -72,6 +78,6 @@
   --duration-normal: 400ms;
 
   /* Elevation */
-  --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.32);
-  --shadow-focus: 0 0 0 3px rgba(166, 0, 0, 0.45);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-focus: 0 0 0 1px var(--brand-primary);
 }

@@ -29,6 +29,9 @@ importers:
       '@art/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@heroicons/react':
+        specifier: ^2.2.0
+        version: 2.2.0(react@19.2.7)
       react:
         specifier: ^19.0.0
         version: 19.2.7
@@ -1091,6 +1094,11 @@ packages:
 
   '@fastify/static@10.1.0':
     resolution: {integrity: sha512-iK/8TvRM/EgNOyQL+EpWu+x3aR6o4GWt+UI+27zmE7w6t/6d80mXqOtWLdEKQ13vL/g1Jry0ae2icj6GP7tGzA==}
+
+  '@heroicons/react@2.2.0':
+    resolution: {integrity: sha512-LMcepvRaS9LYHJGsF0zzmgKCUim/X3N/DQKc4jepAXJ7l8QxJ1PmxJzqplF2Z3FE4PqBAIGyJAQ/w4B5dsqbtQ==}
+    peerDependencies:
+      react: '>= 16 || ^19.0.0-rc'
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -4433,6 +4441,10 @@ snapshots:
       fastify-plugin: 6.0.0
       fastq: 1.20.1
       glob: 13.0.6
+
+  '@heroicons/react@2.2.0(react@19.2.7)':
+    dependencies:
+      react: 19.2.7
 
   '@img/colour@1.1.0': {}
 

@@ -34,13 +34,16 @@ h2,
 }
 
 .ui-link {
-  color: var(--brand-primary-bright);
+  color: var(--ink);
   font-weight: var(--weight-medium);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--brand-primary);
+  text-underline-offset: 3px;
 }
 
 .ui-link:hover {
-  text-decoration: underline;
+  color: var(--brand-primary-bright);
+  text-decoration-color: var(--brand-primary-bright);
 }
 
 .ui-link-row {

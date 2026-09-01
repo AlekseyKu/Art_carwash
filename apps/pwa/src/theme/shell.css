@@ -79,11 +79,11 @@
 }
 
 .bottom-nav__logo--active .brand-logo {
-  filter: drop-shadow(0 0 8px rgba(166, 0, 0, 0.55));
+  filter: drop-shadow(0 0 6px rgba(243, 74, 74, 0.45));
 }
 
 .bottom-nav__logo--active {
-  color: var(--brand-primary-bright);
+  color: var(--brand-primary);
 }
 
 .bottom-nav__icon {
@@ -159,5 +159,5 @@
 }
 
 .bottom-nav__segment--active {
-  color: var(--brand-primary-bright);
+  color: var(--brand-primary);
 }

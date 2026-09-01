@@ -16,8 +16,8 @@ const logoDir = path.join(root, "public/logo");
 const logoSourcePath = path.join(logoDir, "logo.jpeg");
 
 /** Соответствует --brand-primary-bright в tokens.css */
-const BRAND_STROKE = { r: 166, g: 0, b: 0 };
-const GRAPHITE = { r: 48, g: 50, b: 54, alpha: 1 };
+const BRAND_STROKE = { r: 243, g: 74, b: 74 };
+const GRAPHITE = { r: 38, g: 47, b: 52, alpha: 1 };
 
 function luminance(r, g, b) {
   return 0.299 * r + 0.587 * g + 0.114 * b;

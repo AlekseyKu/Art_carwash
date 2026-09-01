@@ -69,7 +69,7 @@
   font-weight: var(--weight-bold);
   font-size: var(--text-base);
   white-space: nowrap;
-  color: var(--brand-primary-bright);
+  color: var(--ink);
 }
 
 .site-info {

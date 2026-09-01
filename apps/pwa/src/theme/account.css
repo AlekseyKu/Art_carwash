@@ -131,16 +131,12 @@
 }
 
 .owner-layout .ui-input:focus {
-  border-color: var(--brand-primary-bright);
+  border-color: var(--brand-primary);
   box-shadow: var(--shadow-focus);
 }
 
-.owner-layout .ui-link {
-  color: var(--brand-primary-bright);
-}
-
 .owner-layout .ui-link:hover {
-  color: var(--ink);
+  color: var(--brand-primary-bright);
 }
 
 .owner-layout .ui-form-error {
@@ -172,6 +168,9 @@
 }
 
 .legal-page__content a {
-  color: var(--brand-primary-bright);
+  color: var(--ink);
   font-weight: var(--weight-medium);
+  text-decoration: underline;
+  text-decoration-color: var(--brand-primary);
+  text-underline-offset: 3px;
 }
