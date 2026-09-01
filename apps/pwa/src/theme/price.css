@@ -15,9 +15,15 @@
 .class-tabs__icon {
   width: 28px;
   height: 28px;
-  object-fit: contain;
   flex-shrink: 0;
-  filter: brightness(0) invert(1);
+  display: block;
+  background-color: var(--ink);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .class-tabs .ui-chip {

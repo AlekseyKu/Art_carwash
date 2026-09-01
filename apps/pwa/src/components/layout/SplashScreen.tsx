@@ -5,11 +5,9 @@ export function SplashScreen() {
     <div className="splash-screen">
       <div className="splash-screen__pattern" aria-hidden />
       <div className="splash-screen__content">
-        <div className="splash-mark" aria-hidden>
-          <AppMark className="splash-mark__logo" />
-        </div>
+        <AppMark className="splash-screen__logo" />
         <h1 className="splash-screen__title">Автомойка у ЖД</h1>
-        <p className="splash-screen__city">г. Ступино</p>
+        <p className="splash-screen__city">Ступино</p>
       </div>
     </div>
   );

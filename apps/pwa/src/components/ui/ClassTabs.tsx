@@ -30,7 +30,16 @@ export function ClassTabs({ items, value, onChange }: ClassTabsProps) {
             aria-selected={selected}
             onClick={() => onChange(item.id)}
           >
-            {icon && <img className="class-tabs__icon" src={icon} alt="" />}
+            {icon && (
+              <span
+                className="class-tabs__icon"
+                style={{
+                  WebkitMaskImage: `url(${icon})`,
+                  maskImage: `url(${icon})`,
+                }}
+                aria-hidden
+              />
+            )}
             {item.name}
           </Chip>
         );
