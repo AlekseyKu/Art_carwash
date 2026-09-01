@@ -6,6 +6,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { nanoid } from "nanoid";
+import {
+  type CatalogSnapshot,
+  initCatalogSchema,
+  saveCatalogSnapshot,
+} from "./catalog.js";
+import { initCustomerSchema, registerCustomerRoutes } from "./customer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = process.env.ART_CLOUD_DATA_DIR ?? path.join(__dirname, "../../../data");
@@ -49,6 +55,9 @@ db.exec(`
   );
 `);
 
+initCatalogSchema(db);
+initCustomerSchema(db);
+
 const ownerCount = db.prepare("SELECT COUNT(*) as c FROM owners").get() as { c: number };
 if (ownerCount.c === 0) {
   const pwd = process.env.ART_OWNER_PASSWORD ?? "owner";
@@ -63,6 +72,8 @@ const SYNC_TOKEN = process.env.ART_SYNC_TOKEN ?? "art-sync-secret";
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
+
+registerCustomerRoutes(app, db);
 
 function bearer(req: { headers: { authorization?: string } }) {
   const h = req.headers.authorization;
@@ -82,8 +93,9 @@ function requireOwner(req: { headers: { authorization?: string } }) {
 }
 
 app.setErrorHandler((err, _req, reply) => {
-  const status = (err as { statusCode?: number }).statusCode ?? 400;
-  reply.code(status).send({ error: err.message });
+  const e = err as { statusCode?: number; message?: string };
+  const status = e.statusCode ?? 400;
+  reply.code(status).send({ error: e.message ?? "Error" });
 });
 
 app.get("/api/health", async () => ({ ok: true, service: "cloud-api" }));
@@ -116,6 +128,10 @@ app.post<{
   try {
     for (const ev of req.body.events ?? []) {
       insertEvent.run(ev.id, ev.type, ev.createdAt, now);
+      if (ev.type === "catalog.snapshot") {
+        saveCatalogSnapshot(db, ev.payload as CatalogSnapshot);
+        continue;
+      }
       const p = ev.payload as {
         id: string;
         number: number;

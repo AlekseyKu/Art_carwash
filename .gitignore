@@ -6,9 +6,15 @@ data
 !station-seed/local.db
 .env
 .env.local
+deploy/.env
+deploy/.env.*
+!deploy/.env.example
+deploy/pwa-dist/
+deploy-context.tgz
 .DS_Store
 *.log
 coverage
 apps/desktop/resources
 apps/desktop/release
+apps/desktop/release-out
 *.tsbuildinfo

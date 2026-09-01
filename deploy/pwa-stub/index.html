@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Автомойка у ЖД</title>
+    <meta name="description" content="Автомойка у ЖД — г. Ступино. Скоро откроем онлайн-запись." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --brand-primary: #8e1d2c;
+        --brand-graphite: #303236;
+        --brand-graphite-muted: #5c6066;
+        --surface: #f2f2f3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100svh;
+        font-family: Montserrat, system-ui, sans-serif;
+        color: var(--brand-graphite);
+        background: linear-gradient(180deg, #ffffff 0%, var(--surface) 100%);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      main {
+        max-width: 420px;
+        width: 100%;
+        text-align: center;
+      }
+
+      .badge {
+        display: inline-block;
+        margin-bottom: 20px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: #f4e8ea;
+        color: var(--brand-primary);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: clamp(28px, 6vw, 36px);
+        line-height: 1.15;
+        font-weight: 700;
+      }
+
+      p {
+        margin: 0 0 24px;
+        color: var(--brand-graphite-muted);
+        line-height: 1.55;
+        font-size: 15px;
+      }
+
+      .card {
+        background: #fff;
+        border-radius: 20px;
+        padding: 20px;
+        box-shadow: 0 8px 30px rgba(48, 50, 54, 0.08);
+        text-align: left;
+      }
+
+      .card h2 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .card ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--brand-graphite-muted);
+        font-size: 14px;
+        line-height: 1.6;
+      }
+
+      .accent {
+        color: var(--brand-primary);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="badge">Скоро</div>
+      <h1>Автомойка у ЖД</h1>
+      <p>
+        Готовим мобильное приложение: прайс, запись и личный кабинет. Пока мойка работает в обычном
+        режиме — ждём вас на месте.
+      </p>
+      <section class="card">
+        <h2>Контакты</h2>
+        <ul>
+          <li>г. Ступино</li>
+          <li>Ежедневно <span class="accent">09:00–21:00</span></li>
+          <li><a class="accent" href="tel:+79852741430">+7 (985) 274-14-30</a></li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

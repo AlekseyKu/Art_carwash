@@ -1,0 +1,146 @@
+export interface Customer {
+  id: string;
+  phone: string;
+  phoneDisplay: string;
+  name: string | null;
+}
+
+export interface CatalogSnapshot {
+  version: string;
+  updatedAt: string;
+  site: {
+    name: string;
+    city: string;
+    phone: string;
+    hoursText: string;
+    lat: number;
+    lon: number;
+    addressText: string;
+  };
+  bookingRules: {
+    horizonDays: number;
+    minLeadHours: number;
+    cancelBeforeHours: number;
+    defaultDurationMinutes: number;
+  };
+  tabs: {
+    id: string;
+    slug: string;
+    name: string;
+    sortOrder: number;
+    active: boolean;
+  }[];
+  services: {
+    id: string;
+    name: string;
+    description: string;
+    tabId: string;
+    active: boolean;
+    sortOrder: number;
+    priceKopecks: number | null;
+    durationMinutes: number | null;
+  }[];
+  vehicleClasses: {
+    id: string;
+    slug: string;
+    name: string;
+    description: string;
+    iconKey: string;
+    sortOrder: number;
+    active: boolean;
+  }[];
+  servicePrices: {
+    serviceId: string;
+    classId: string;
+    priceKopecks: number;
+  }[];
+}
+
+const TOKEN_KEY = "art_pwa_token";
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+async function api<T>(
+  path: string,
+  init?: RequestInit & { auth?: boolean }
+): Promise<T> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    ...(init?.headers as Record<string, string>),
+  };
+  if (init?.auth !== false) {
+    const token = getToken();
+    if (token) headers.authorization = `Bearer ${token}`;
+  }
+  const res = await fetch(path, { ...init, headers });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? res.statusText);
+  return data;
+}
+
+export const apiClient = {
+  register(body: {
+    phone: string;
+    password: string;
+    passwordConfirm: string;
+    pdnAccepted: boolean;
+    privacyPolicyVersion: string;
+  }) {
+    return api<{
+      ok: boolean;
+      token: string;
+      customer: Customer;
+    }>("/api/customer/register", { method: "POST", body: JSON.stringify(body), auth: false });
+  },
+
+  login(body: { phone: string; password: string }) {
+    return api<{
+      ok: boolean;
+      token: string;
+      customer: Customer;
+    }>("/api/customer/login", { method: "POST", body: JSON.stringify(body), auth: false });
+  },
+
+  logout() {
+    return api<{ ok: boolean }>("/api/customer/logout", { method: "POST" });
+  },
+
+  me() {
+    return api<Customer>("/api/customer/me");
+  },
+
+  catalog() {
+    return api<CatalogSnapshot>("/api/customer/catalog");
+  },
+
+  ownerLogin(password: string) {
+    return api<{ ok: boolean; token: string }>("/api/owner/login", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+      auth: false,
+    });
+  },
+};
+
+export function yandexRouteUrl(lat: number, lon: number): string {
+  return `https://yandex.ru/maps/?rtext=~${lat},${lon}&rtt=auto`;
+}
+
+export function yandexNaviUrl(lat: number, lon: number): string {
+  return `yandexnavi://build_route_on_map?lat_to=${lat}&lon_to=${lon}`;
+}
+
+export function openRoute(lat: number, lon: number) {
+  const navi = yandexNaviUrl(lat, lon);
+  window.location.href = navi;
+  window.setTimeout(() => {
+    window.open(yandexRouteUrl(lat, lon), "_blank", "noopener");
+  }, 600);
+}

@@ -1,0 +1,34 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./pwa-dist:/srv/pwa:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      cloud-api:
+        condition: service_started
+
+  cloud-api:
+    build:
+      context: ..
+      dockerfile: deploy/cloud-api.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3002"
+      ART_CLOUD_DATA_DIR: /data
+    volumes:
+      - cloud_data:/data
+    expose:
+      - "3002"
+
+volumes:
+  caddy_data:
+  caddy_config:
+  cloud_data:

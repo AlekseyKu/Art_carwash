@@ -5,10 +5,12 @@
     "dev": "pnpm --parallel --filter @art/local-api --filter @art/web --filter @art/cloud-api dev",
     "dev:local": "pnpm --parallel --filter @art/local-api --filter @art/web dev",
     "dev:cloud": "pnpm --filter @art/cloud-api dev",
+    "dev:pwa": "pnpm --filter @art/pwa dev",
     "dev:bridge": "pnpm --filter @art/terminal-bridge start",
     "dev:desktop": "pnpm --filter @art/web build && pnpm --filter @art/desktop dev",
     "dist:pos": "pnpm --filter @art/desktop dist",
     "release:pos": "node scripts/publish-pos-release.mjs",
+    "deploy:vps": "node scripts/deploy-vps.mjs",
     "kiosk": "powershell -ExecutionPolicy Bypass -File ./scripts/start-touch-kiosk.ps1",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"

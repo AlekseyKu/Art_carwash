@@ -51,6 +51,11 @@ import {
 } from "./orders.js";
 import { isOnline, providers } from "./payments.js";
 import { flushOutbox, startSyncLoop } from "./sync.js";
+import { enqueueCatalogSnapshot } from "./catalogSnapshot.js";
+
+function afterCatalogChange() {
+  enqueueCatalogSnapshot();
+}
 import {
   buildShiftReport,
   closeShift,
@@ -519,6 +524,7 @@ app.post<{
   db.prepare(
     "INSERT INTO catalog_tabs (id, slug, name, sort_order, active) VALUES (?, ?, ?, ?, ?)"
   ).run(id, slug, name, req.body.sortOrder ?? 100, req.body.active === false ? 0 : 1);
+  afterCatalogChange();
   return { id, slug };
 });
 
@@ -530,6 +536,7 @@ app.put<{
   db.prepare(
     "UPDATE catalog_tabs SET name = ?, sort_order = ?, active = ? WHERE id = ?"
   ).run(req.body.name, req.body.sortOrder, req.body.active ? 1 : 0, req.params.id);
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -548,6 +555,7 @@ app.delete<{ Params: { id: string } }>("/api/admin/catalog-tabs/:id", async (req
   const totalTabs = db.prepare("SELECT COUNT(*) as c FROM catalog_tabs").get() as { c: number };
   if (totalTabs.c <= 1) throw new Error("Нельзя удалить последнюю вкладку");
   db.prepare("DELETE FROM catalog_tabs WHERE id = ?").run(tab.id);
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -601,6 +609,7 @@ app.post<{
     req.body.coefficientEnabled ? 1 : 0,
     step
   );
+  afterCatalogChange();
   return { id };
 });
 
@@ -663,6 +672,7 @@ app.put<{
     step,
     req.params.id
   );
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -671,6 +681,7 @@ app.delete<{ Params: { id: string } }>("/api/admin/services/:id", async (req) =>
   db.prepare("DELETE FROM service_prices WHERE service_id = ?").run(req.params.id);
   const result = db.prepare("DELETE FROM services WHERE id = ?").run(req.params.id);
   if (result.changes === 0) throw new Error("Позиция не найдена");
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -711,6 +722,7 @@ app.post<{
     req.body.sortOrder ?? 100,
     req.body.active === false ? 0 : 1
   );
+  afterCatalogChange();
   return { id, slug };
 });
 
@@ -740,6 +752,7 @@ app.put<{
     req.body.active ? 1 : 0,
     req.params.id
   );
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -754,9 +767,11 @@ app.delete<{ Params: { id: string } }>("/api/admin/vehicle-classes/:id", async (
     .get(req.params.id) as { c: number };
   if (priceCount.c > 0) {
     db.prepare("UPDATE vehicle_classes SET active = 0 WHERE id = ?").run(req.params.id);
+    afterCatalogChange();
     return { ok: true, soft: true };
   }
   db.prepare("DELETE FROM vehicle_classes WHERE id = ?").run(req.params.id);
+  afterCatalogChange();
   return { ok: true, soft: false };
 });
 
@@ -837,6 +852,7 @@ app.put<{
       upsert.run(item.serviceId, classId, item.priceKopecks);
     }
   }
+  afterCatalogChange();
   return { ok: true };
 });
 
@@ -1150,6 +1166,12 @@ app.get<{ Params: { id: string } }>("/api/admin/shifts/:id", async (req) => {
 
 app.post("/api/admin/sync", async (req) => {
   requireAdmin(req);
+  return flushOutbox();
+});
+
+app.post("/api/admin/publish-catalog", async (req) => {
+  requireAdmin(req);
+  afterCatalogChange();
   return flushOutbox();
 });
 

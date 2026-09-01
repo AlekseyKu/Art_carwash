@@ -1,0 +1,13 @@
+carwash-jd.ru, www.carwash-jd.ru {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy cloud-api:3002
+	}
+
+	handle {
+		root * /srv/pwa
+		try_files {path} /index.html
+		file_server
+	}
+}
