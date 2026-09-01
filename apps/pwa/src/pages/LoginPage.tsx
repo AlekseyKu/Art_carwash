@@ -1,6 +1,8 @@
-import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "../auth";
+import { AuthLayout } from "../components/layout/AuthLayout";
+import { Button, Field, FormError } from "../components/ui";
 
 export function LoginPage() {
   const { login, onboardingDone } = useAuth();
@@ -25,45 +27,56 @@ export function LoginPage() {
   }
 
   return (
-    <div className="app-main" style={{ paddingTop: 24 }}>
-      <h1 style={{ marginTop: 0, fontSize: 22 }}>Вход</h1>
+    <AuthLayout
+      title="Вход"
+      lead="Войдите по номеру телефона и паролю."
+      footer={
+        <>
+          {!onboardingDone && (
+            <p className="ui-link-row">
+              <Link className="ui-link" to="/welcome">
+                Назад к описанию
+              </Link>
+            </p>
+          )}
+          <p className="ui-link-row">
+            <Link className="ui-link" to="/register">
+              Создать аккаунт
+            </Link>
+          </p>
+        </>
+      }
+    >
       <form onSubmit={onSubmit}>
-        <div className="field">
-          <label htmlFor="phone">Телефон</label>
-          <input
-            id="phone"
-            type="tel"
-            inputMode="tel"
-            placeholder="+7 (___) ___-__-__"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password">Пароль</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        {error && <p className="error-text">{error}</p>}
-        <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+        <Field
+          label="Телефон"
+          htmlFor="phone"
+          inputProps={{
+            type: "tel",
+            inputMode: "tel",
+            placeholder: "+7 (___) ___-__-__",
+            value: phone,
+            onChange: (e) => setPhone(e.target.value),
+            required: true,
+            autoComplete: "tel",
+          }}
+        />
+        <Field
+          label="Пароль"
+          htmlFor="password"
+          inputProps={{
+            type: "password",
+            autoComplete: "current-password",
+            value: password,
+            onChange: (e) => setPassword(e.target.value),
+            required: true,
+          }}
+        />
+        <FormError message={error} />
+        <Button type="submit" block disabled={loading}>
           {loading ? "Входим…" : "Войти"}
-        </button>
+        </Button>
       </form>
-      {!onboardingDone && (
-        <p style={{ textAlign: "center", marginTop: 16 }}>
-          <Link to="/welcome">Назад к описанию</Link>
-        </p>
-      )}
-      <p style={{ textAlign: "center", marginTop: 16 }}>
-        <Link to="/register">Создать аккаунт</Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

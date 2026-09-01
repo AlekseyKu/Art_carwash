@@ -1,6 +1,8 @@
-import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useState } from "react";
 import { useAuth } from "../auth";
+import { AuthLayout } from "../components/layout/AuthLayout";
+import { Button, CheckboxField, Field, FormError } from "../components/ui";
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -27,68 +29,66 @@ export function RegisterPage() {
   }
 
   return (
-    <div className="app-main" style={{ paddingTop: 24 }}>
-      <h1 style={{ marginTop: 0, fontSize: 22 }}>Регистрация</h1>
+    <AuthLayout
+      title="Регистрация"
+      lead="Создайте аккаунт, чтобы видеть прайс и записываться на мойку."
+      footer={
+        <p className="ui-link-row">
+          <Link className="ui-link" to="/login">
+            Уже есть аккаунт
+          </Link>
+        </p>
+      }
+    >
       <form onSubmit={onSubmit}>
-        <div className="field">
-          <label htmlFor="phone">Телефон</label>
-          <input
-            id="phone"
-            type="tel"
-            inputMode="tel"
-            placeholder="+7 (___) ___-__-__"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password">Пароль</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            required
-          />
-        </div>
-        <div className="field">
-          <label htmlFor="password2">Повтор пароля</label>
-          <input
-            id="password2"
-            type="password"
-            autoComplete="new-password"
-            value={passwordConfirm}
-            onChange={(e) => setPasswordConfirm(e.target.value)}
-            minLength={8}
-            required
-          />
-        </div>
-        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 16 }}>
-          <input
-            type="checkbox"
-            checked={pdnAccepted}
-            onChange={(e) => setPdnAccepted(e.target.checked)}
-            required
-            style={{ marginTop: 4 }}
-          />
-          <span style={{ fontSize: 14, lineHeight: 1.5 }}>
-            Я согласен(на) на{" "}
-            <Link to="/privacy" target="_blank">
-              обработку персональных данных
-            </Link>
-          </span>
-        </label>
-        {error && <p className="error-text">{error}</p>}
-        <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+        <Field
+          label="Телефон"
+          htmlFor="phone"
+          inputProps={{
+            type: "tel",
+            inputMode: "tel",
+            placeholder: "+7 (___) ___-__-__",
+            value: phone,
+            onChange: (e) => setPhone(e.target.value),
+            required: true,
+            autoComplete: "tel",
+          }}
+        />
+        <Field
+          label="Пароль"
+          htmlFor="password"
+          inputProps={{
+            type: "password",
+            autoComplete: "new-password",
+            value: password,
+            onChange: (e) => setPassword(e.target.value),
+            minLength: 8,
+            required: true,
+          }}
+        />
+        <Field
+          label="Повтор пароля"
+          htmlFor="password2"
+          inputProps={{
+            type: "password",
+            autoComplete: "new-password",
+            value: passwordConfirm,
+            onChange: (e) => setPasswordConfirm(e.target.value),
+            minLength: 8,
+            required: true,
+          }}
+        />
+        <CheckboxField checked={pdnAccepted} onChange={setPdnAccepted} required>
+          Я согласен(на) на{" "}
+          <Link className="ui-link" to="/privacy" target="_blank" rel="noopener noreferrer">
+            обработку персональных данных
+          </Link>
+        </CheckboxField>
+        <FormError message={error} />
+        <Button type="submit" block disabled={loading}>
           {loading ? "Сохраняем…" : "Зарегистрироваться"}
-        </button>
+        </Button>
       </form>
-      <p style={{ textAlign: "center", marginTop: 16 }}>
-        <Link to="/login">Уже есть аккаунт</Link>
-      </p>
-    </div>
+    </AuthLayout>
   );
 }

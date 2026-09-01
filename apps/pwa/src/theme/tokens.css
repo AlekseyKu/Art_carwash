@@ -1,0 +1,70 @@
+:root {
+  /* Brand — Гранат (06-brand.md) */
+  --brand-primary: #8e1d2c;
+  --brand-primary-hover: #751824;
+  --brand-primary-soft: #f4e8ea;
+  --brand-graphite: #303236;
+  --brand-graphite-muted: #5c6066;
+  --brand-graphite-soft: #d4d6d9;
+
+  /* Semantic */
+  --ink: #303236;
+  --muted: #5c6066;
+  --surface: #f2f2f3;
+  --surface-elevated: #ffffff;
+  --border: #d4d6d9;
+  --border-subtle: #e8e9eb;
+  --success: #2f9e6b;
+  --danger: #c43c3c;
+  --warning: #c48a1a;
+
+  /* Typography */
+  --font: "Montserrat", system-ui, sans-serif;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-md: 16px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  /* Spacing (Cyberdom-inspired scale) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+
+  /* Radii */
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Controls */
+  --control-height: 52px;
+  --control-padding-x: 16px;
+  --touch-min: 44px;
+
+  /* Layout */
+  --page-max-width: 480px;
+  --nav-h: 64px;
+
+  /* Motion */
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 150ms;
+  --duration-normal: 400ms;
+
+  /* Elevation */
+  --shadow-card: 0 4px 20px rgba(48, 50, 54, 0.06);
+  --shadow-focus: 0 0 0 3px var(--brand-primary-soft);
+}

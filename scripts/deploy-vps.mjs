@@ -28,6 +28,6 @@ run(
 );
 
 run(`scp deploy-context.tgz art-vps:~/art.tgz`);
-run(`ssh art-vps "cd ~/art && tar -xzf ~/art.tgz && rm ~/art.tgz && cd deploy && docker compose up -d --build"`);
+run(`ssh art-vps "mkdir -p ~/art && cd ~/art && tar -xzf ~/art.tgz && rm ~/art.tgz && cd deploy && docker compose up -d --build"`);
 
 console.log("\nDone: https://carwash-jd.ru/");

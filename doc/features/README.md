@@ -11,6 +11,7 @@
 | [05-operators-staff-order-ux.md](05-operators-staff-order-ux.md) | Операторы/мойщики, коэффициент, UX заказа, аналитика, OSK | implemented |
 | [06-customer-pwa.md](06-customer-pwa.md) | Клиентское PWA «Автомойка у ЖД»: онбординг, прайс, запись, кабинет, Docker на VPS | spec-ready |
 | [06-privacy-policy.md](06-privacy-policy.md) | Политика ПДн для PWA (версия `2026-08-30`) | draft |
+| [07-pwa-ui-cyberdom-port.md](07-pwa-ui-cyberdom-port.md) | UI PWA: порт дизайн-системы Cyberdom mobile → React | spec-ready |
 
 ## Как добавлять
 

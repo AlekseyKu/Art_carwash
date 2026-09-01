@@ -1,0 +1,50 @@
+body {
+  font-family: var(--font);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-normal);
+  color: var(--ink);
+}
+
+h1,
+.ui-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+  color: var(--ink);
+}
+
+h2,
+.ui-title-sm {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  color: var(--ink);
+}
+
+.ui-text-muted {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.ui-text-center {
+  text-align: center;
+}
+
+.ui-link {
+  color: var(--brand-primary);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.ui-link:hover {
+  text-decoration: underline;
+}
+
+.ui-link-row {
+  margin-top: var(--space-4);
+  text-align: center;
+  font-size: var(--text-sm);
+}
