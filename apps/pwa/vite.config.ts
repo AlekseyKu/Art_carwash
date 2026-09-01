@@ -18,7 +18,7 @@ export default defineConfig(({ mode }) => {
         includeAssets: ["favicon-32.png", "logo/logo.jpeg", "logo/logo.png", "pwa-192.png", "pwa-512.png"],
         manifest: {
           name: "Автомойка у ЖД",
-          short_name: "Автомойка у ЖД",
+          short_name: "Автомойка",
           description: "Прайс, запись и личный кабинет автомойки в Ступино",
           theme_color: "#262f34",
           background_color: "#262f34",

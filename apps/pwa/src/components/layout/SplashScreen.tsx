@@ -1,4 +1,4 @@
-import { LOGO_APP_PATH } from "../../brand/logo";
+import { AppMark } from "../brand/AppMark";
 
 export function SplashScreen() {
   return (
@@ -6,7 +6,7 @@ export function SplashScreen() {
       <div className="splash-screen__pattern" aria-hidden />
       <div className="splash-screen__content">
         <div className="splash-mark" aria-hidden>
-          <img className="splash-mark__logo" src={LOGO_APP_PATH} alt="" />
+          <AppMark className="splash-mark__logo" />
         </div>
         <h1 className="splash-screen__title">Автомойка у ЖД</h1>
         <p className="splash-screen__city">г. Ступино</p>

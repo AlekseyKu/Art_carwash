@@ -74,14 +74,6 @@
 .bottom-nav__logo .brand-logo {
   width: 56px;
   height: 56px;
-  display: block;
-  background-color: var(--brand-primary);
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-size: contain;
-  mask-size: contain;
 }
 
 .bottom-nav__logo--active .brand-logo {

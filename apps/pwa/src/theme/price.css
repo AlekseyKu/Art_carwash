@@ -25,8 +25,9 @@
   background: transparent;
 }
 
-.class-tabs .ui-chip--active {
-  border-color: var(--brand-primary);
+.class-tabs .ui-chip.ui-chip--active,
+.class-tabs .ui-chip.ui-chip--active:hover:not(:disabled) {
+  border: 2px solid var(--brand-primary);
   background: transparent;
   color: var(--ink);
 }

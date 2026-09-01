@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
+import { SPLASH_MIN_DURATION_MS } from "../brand/logo";
 import { SplashScreen } from "../components/layout/SplashScreen";
 
 export function SplashPage() {
@@ -9,7 +10,7 @@ export function SplashPage() {
   const [minDelay, setMinDelay] = useState(false);
 
   useEffect(() => {
-    const t = window.setTimeout(() => setMinDelay(true), 900);
+    const t = window.setTimeout(() => setMinDelay(true), SPLASH_MIN_DURATION_MS);
     return () => window.clearTimeout(t);
   }, []);
 

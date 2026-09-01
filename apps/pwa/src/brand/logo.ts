@@ -8,3 +8,6 @@ export const LOGO_SOURCE_PATH = "/logo/logo.jpeg";
 export const LOGO_APP_PATH = "/logo/logo.png";
 /** Временно: иконка класса «Легковые» */
 export const LOGO_NAV_SRC = sedanIcon;
+
+/** Минимальное время сплэша при старте приложения */
+export const SPLASH_MIN_DURATION_MS = 1000;

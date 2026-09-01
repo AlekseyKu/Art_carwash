@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 /**
- * Единственный исходник: public/logo/logo.jpeg
- *
- * Генерирует:
- * — logo.png — белые линии + брендовые мазки на прозрачном (для UI)
- * — pwa-192/512.png, favicon-32.png — иконки на графите
+ * Генерация ассетов PWA:
+ * — logo.png из logo.jpeg (бренд для UI)
+ * — pwa-192/512.png, favicon-32.png — красная «Легковые» на грифеле (#262f34)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -14,10 +12,12 @@ import sharp from "sharp";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const logoDir = path.join(root, "public/logo");
 const logoSourcePath = path.join(logoDir, "logo.jpeg");
+const sedanPath = path.join(root, "src/assets/vehicle-classes/sedan.png");
 
-/** Соответствует --brand-primary-bright в tokens.css */
-const BRAND_STROKE = { r: 243, g: 74, b: 74 };
-const GRAPHITE = { r: 38, g: 47, b: 52, alpha: 1 };
+/** --brand-primary / --palette-neon-red */
+const BRAND_RED = { r: 243, g: 74, b: 74 };
+/** --palette-slate */
+const SLATE = { r: 38, g: 47, b: 52, alpha: 1 };
 
 function luminance(r, g, b) {
   return 0.299 * r + 0.587 * g + 0.114 * b;
@@ -27,7 +27,6 @@ function isBackground(r, g, b) {
   return r > 235 && g > 235 && b > 235;
 }
 
-/** Красные мазки из исходного JPEG */
 function redStrength(r, g, b) {
   if (r < 60) return 0;
   const dominance = r - Math.max(g, b);
@@ -64,9 +63,9 @@ function recolorLogoPixels(data, width, height) {
 
     if (red >= ink) {
       const alpha = Math.round(255 * Math.min(1, red * 1.15 + 0.2));
-      out[i] = BRAND_STROKE.r;
-      out[i + 1] = BRAND_STROKE.g;
-      out[i + 2] = BRAND_STROKE.b;
+      out[i] = BRAND_RED.r;
+      out[i + 1] = BRAND_RED.g;
+      out[i + 2] = BRAND_RED.b;
       out[i + 3] = alpha;
     } else {
       const alpha = Math.round(255 * Math.min(1, ink * 1.1 + 0.15));
@@ -105,25 +104,9 @@ async function getLogoBuffer(targetSize) {
   );
 }
 
-async function renderLogoPng(size, outPath, options = {}) {
-  const { background = null, padding = 0.12 } = options;
-  const inner = Math.round(size * (1 - padding * 2));
+async function renderLogoPng(size, outPath) {
+  const inner = Math.round(size * 0.76);
   const logoBuffer = await getLogoBuffer(inner);
-
-  if (background) {
-    await sharp({
-      create: {
-        width: size,
-        height: size,
-        channels: 4,
-        background,
-      },
-    })
-      .composite([{ input: logoBuffer, gravity: "center" }])
-      .png()
-      .toFile(outPath);
-    return;
-  }
 
   await sharp({
     create: {
@@ -138,17 +121,77 @@ async function renderLogoPng(size, outPath, options = {}) {
     .toFile(outPath);
 }
 
+async function buildRedCarPng() {
+  if (!fs.existsSync(sedanPath)) {
+    throw new Error(`Missing sedan icon: ${sedanPath}`);
+  }
+
+  const { data, info } = await sharp(sedanPath)
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const out = Buffer.alloc(data.length);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    if (alpha < 16) {
+      out[i] = 0;
+      out[i + 1] = 0;
+      out[i + 2] = 0;
+      out[i + 3] = 0;
+      continue;
+    }
+
+    out[i] = BRAND_RED.r;
+    out[i + 1] = BRAND_RED.g;
+    out[i + 2] = BRAND_RED.b;
+    out[i + 3] = alpha;
+  }
+
+  return sharp(out, { raw: { width: info.width, height: info.height, channels: 4 } }).png();
+}
+
+async function getRedCarBuffer(targetSize) {
+  return buildRedCarPng().then((pipeline) =>
+    pipeline
+      .resize(targetSize, targetSize, {
+        fit: "contain",
+        background: { r: 0, g: 0, b: 0, alpha: 0 },
+      })
+      .png()
+      .toBuffer()
+  );
+}
+
+async function renderAppIcon(size, outPath, options = {}) {
+  const { padding = 0.16 } = options;
+  const inner = Math.round(size * (1 - padding * 2));
+  const carBuffer = await getRedCarBuffer(inner);
+
+  await sharp({
+    create: {
+      width: size,
+      height: size,
+      channels: 4,
+      background: SLATE,
+    },
+  })
+    .composite([{ input: carBuffer, gravity: "center" }])
+    .png()
+    .toFile(outPath);
+}
+
 await renderLogoPng(1024, path.join(logoDir, "logo.png"));
 console.log("wrote public/logo/logo.png (from logo.jpeg)");
 
 for (const size of [192, 512]) {
   const out = path.join(root, "public", `pwa-${size}.png`);
-  await renderLogoPng(size, out, { background: GRAPHITE, padding: 0.14 });
+  await renderAppIcon(size, out, { padding: 0.18 });
   console.log(`wrote ${out}`);
 }
 
-await renderLogoPng(32, path.join(root, "public", "favicon-32.png"), {
-  background: GRAPHITE,
-  padding: 0.1,
+await renderAppIcon(32, path.join(root, "public", "favicon-32.png"), {
+  padding: 0.14,
 });
 console.log("wrote public/favicon-32.png");
