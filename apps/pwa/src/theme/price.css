@@ -17,6 +17,18 @@
   height: 28px;
   object-fit: contain;
   flex-shrink: 0;
+  filter: brightness(0) invert(1);
+}
+
+.class-tabs .ui-chip {
+  border: 1px solid var(--border);
+  background: transparent;
+}
+
+.class-tabs .ui-chip--active {
+  border-color: var(--brand-primary);
+  background: transparent;
+  color: var(--ink);
 }
 
 .price-section {

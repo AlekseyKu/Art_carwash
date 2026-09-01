@@ -1,11 +1,13 @@
-import { LOGO_NAV_PATH } from "../../brand/logo";
+import { LOGO_NAV_SRC } from "../../brand/logo";
 
 export function BrandLogo({ className = "" }: { className?: string }) {
   return (
-    <img
-      src={LOGO_NAV_PATH}
-      alt=""
+    <span
       className={["brand-logo", className].filter(Boolean).join(" ")}
+      style={{
+        WebkitMaskImage: `url(${LOGO_NAV_SRC})`,
+        maskImage: `url(${LOGO_NAV_SRC})`,
+      }}
       aria-hidden
     />
   );

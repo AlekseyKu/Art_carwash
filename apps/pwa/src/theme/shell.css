@@ -60,7 +60,7 @@
   place-items: center;
   width: 56px;
   height: 56px;
-  padding: 0;
+  padding: 0 0 0 var(--space-2);
   color: var(--ink);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
@@ -74,8 +74,14 @@
 .bottom-nav__logo .brand-logo {
   width: 56px;
   height: 56px;
-  object-fit: contain;
   display: block;
+  background-color: var(--brand-primary);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .bottom-nav__logo--active .brand-logo {
