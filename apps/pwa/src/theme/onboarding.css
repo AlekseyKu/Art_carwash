@@ -19,8 +19,8 @@
   inset: 0;
   opacity: 0.35;
   background:
-    radial-gradient(circle at 15% 20%, rgba(142, 29, 44, 0.18) 0, transparent 42%),
-    radial-gradient(circle at 85% 75%, rgba(142, 29, 44, 0.12) 0, transparent 38%),
+    radial-gradient(circle at 15% 20%, rgba(166, 0, 0, 0.18) 0, transparent 42%),
+    radial-gradient(circle at 85% 75%, rgba(166, 0, 0, 0.12) 0, transparent 38%),
     radial-gradient(circle at 50% 100%, rgba(255, 255, 255, 0.04) 0, transparent 55%);
   pointer-events: none;
 }
@@ -46,6 +46,12 @@
   box-shadow:
     inset 0 -3px 0 var(--brand-primary),
     0 12px 32px rgba(0, 0, 0, 0.24);
+}
+
+.splash-mark__logo {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
 }
 
 .splash-mark__icon {

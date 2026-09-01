@@ -1,10 +1,10 @@
 :root {
   /* Brand — Гранат (06-brand.md) */
-  --brand-primary: #8e1d2c;
-  --brand-primary-hover: #751824;
-  --brand-primary-bright: #e5737e;
-  --brand-primary-soft: rgba(142, 29, 44, 0.32);
-  --brand-primary-soft-text: #f0aab2;
+  --brand-primary: #a60000;
+  --brand-primary-hover: #850000;
+  --brand-primary-bright: #a60000;
+  --brand-primary-soft: rgba(166, 0, 0, 0.32);
+  --brand-primary-soft-text: #ff9999;
   --brand-graphite: #303236;
   --brand-graphite-muted: #5c6066;
   --brand-graphite-soft: #a3a8b0;
@@ -63,7 +63,7 @@
 
   /* Layout */
   --page-max-width: 480px;
-  --nav-h: 64px;
+  --nav-h: 72px;
 
   /* Motion */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
@@ -73,5 +73,5 @@
 
   /* Elevation */
   --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.32);
-  --shadow-focus: 0 0 0 3px rgba(142, 29, 44, 0.45);
+  --shadow-focus: 0 0 0 3px rgba(166, 0, 0, 0.45);
 }

@@ -58,17 +58,28 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
-  padding: 0 var(--space-1);
+  width: 56px;
+  height: 56px;
+  padding: 0;
   color: var(--ink);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 .bottom-nav__logo svg {
-  width: 28px;
-  height: 28px;
+  width: 56px;
+  height: 56px;
+}
+
+.bottom-nav__logo .brand-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  display: block;
+}
+
+.bottom-nav__logo--active .brand-logo {
+  filter: drop-shadow(0 0 8px rgba(166, 0, 0, 0.55));
 }
 
 .bottom-nav__logo--active {

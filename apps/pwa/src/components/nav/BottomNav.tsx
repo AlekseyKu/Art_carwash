@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { BrandLogo } from "../brand/BrandLogo";
 import { ExpandingLabel } from "./ExpandingLabel";
 
 interface NavTab {
@@ -39,17 +40,6 @@ const tabs: NavTab[] = [
     ),
   },
 ];
-
-function BrandLogo() {
-  return (
-    <svg viewBox="0 0 32 32" fill="none" aria-hidden>
-      <path
-        d="M16 6c-1.1 5.4-5.5 9.9-5.5 15.9 0 3 2.5 5.5 5.5 5.5s5.5-2.5 5.5-5.5C21.5 15.9 17.1 11.4 16 6Z"
-        fill="currentColor"
-      />
-    </svg>
-  );
-}
 
 function NavSegment({ tab }: { tab: NavTab }) {
   return (

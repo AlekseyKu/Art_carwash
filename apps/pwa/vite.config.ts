@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
-        includeAssets: ["favicon.svg", "icon.svg", "pwa-192.png", "pwa-512.png"],
+        includeAssets: ["favicon-32.png", "logo/logo.jpeg", "logo/logo.png", "logo/logo-app.png", "pwa-192.png", "pwa-512.png"],
         manifest: {
           name: "Автомойка у ЖД",
           short_name: "Автомойка у ЖД",
