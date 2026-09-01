@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { apiClient } from "../api";
+import { OwnerLayout } from "../components/layout/OwnerLayout";
+import { Button, ButtonLink, Field, FormError, StubPanel } from "../components/ui";
+
+function FeedIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4 6h16M4 12h10M4 18h14" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function OwnerPage() {
   const [password, setPassword] = useState("");
@@ -25,41 +35,54 @@ export function OwnerPage() {
 
   if (token) {
     return (
-      <div className="app-main" style={{ paddingTop: 24 }}>
-        <h1 style={{ fontSize: 20 }}>Собственник</h1>
-        <div className="card stub-page">
-          <h2>Лента записей</h2>
-          <p>Заглушка до фазы C. Аналитика доступна в /reports на кассе.</p>
-          <Link to="/app/price" className="btn btn-primary">
-            Открыть как клиент
-          </Link>
-        </div>
-      </div>
+      <OwnerLayout title="Собственник" lead="Админ-режим PWA">
+        <StubPanel
+          title="Лента записей"
+          icon={<FeedIcon />}
+          action={
+            <ButtonLink to="/app/price" variant="primary">
+              Открыть как клиент
+            </ButtonLink>
+          }
+        >
+          <p className="stub-panel__text">
+            Заглушка до фазы C. Аналитика доступна в /reports на кассе.
+          </p>
+        </StubPanel>
+      </OwnerLayout>
     );
   }
 
   return (
-    <div className="app-main" style={{ paddingTop: 24 }}>
-      <h1 style={{ fontSize: 20 }}>Вход собственника</h1>
+    <OwnerLayout
+      title="Вход собственника"
+      lead="Скрытый раздел для владельца автомойки"
+      footer={
+        <p className="ui-link-row">
+          <Link className="ui-link" to="/">
+            На главную
+          </Link>
+        </p>
+      }
+    >
       <form onSubmit={onSubmit}>
-        <div className="field">
-          <label htmlFor="owner-pwd">Пароль</label>
-          <input
-            id="owner-pwd"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        {error && <p className="error-text">{error}</p>}
-        <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-          {loading ? "…" : "Войти"}
-        </button>
+        <Field
+          label="Пароль"
+          htmlFor="owner-pwd"
+          inputProps={{
+            id: "owner-pwd",
+            type: "password",
+            autoComplete: "current-password",
+            value: password,
+            onChange: (e) => setPassword(e.target.value),
+            required: true,
+          }}
+        />
+        <FormError message={error} />
+        <Button type="submit" block disabled={loading}>
+          {loading ? "Входим…" : "Войти"}
+        </Button>
       </form>
-      <p style={{ marginTop: 16 }}>
-        <Link to="/">На главную</Link>
-      </p>
-    </div>
+    </OwnerLayout>
   );
 }

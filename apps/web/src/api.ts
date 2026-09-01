@@ -585,6 +585,12 @@ export const adminApi = {
       token,
       body: JSON.stringify({}),
     }),
+  publishCatalog: (token: string) =>
+    request<{ synced: number; error?: string }>("/api/admin/publish-catalog", {
+      method: "POST",
+      token,
+      body: JSON.stringify({}),
+    }),
   syncSettings: (token: string) =>
     request<{ cloudSyncUrl: string | null; hasToken: boolean }>("/api/admin/sync-settings", {
       token,

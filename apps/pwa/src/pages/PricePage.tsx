@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { apiClient, openRoute, type CatalogSnapshot } from "../api";
+import { apiClient, type CatalogSnapshot } from "../api";
 import { PriceLabel } from "../components/AppShell";
-import { vehicleClassIconSrc } from "../vehicleClassIcons";
+import { PageHeader } from "../components/layout/PageHeader";
+import { CatalogEmpty } from "../components/price/CatalogEmpty";
+import { SiteInfoCard } from "../components/price/SiteInfoCard";
+import { Card, ClassTabs, FormError, ListRow } from "../components/ui";
 
 const CLASS_PRICED_SLUGS = new Set(["services", "extra-services"]);
 
@@ -21,10 +24,19 @@ function resolvePrice(
   return svc?.priceKopecks ?? null;
 }
 
+function hasCatalogItems(catalog: CatalogSnapshot, classId: string): boolean {
+  const tabs = catalog.tabs.filter((t) => t.active);
+  return tabs.some((tab) =>
+    catalog.services
+      .filter((s) => s.active && s.tabId === tab.id)
+      .some((s) => resolvePrice(s.id, classId, catalog, tab.slug) !== null)
+  );
+}
+
 export function PricePage() {
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null);
   const [error, setError] = useState("");
-  const [classId, setClassId] = useState<string>("");
+  const [classId, setClassId] = useState("");
 
   useEffect(() => {
     apiClient
@@ -42,81 +54,72 @@ export function PricePage() {
     [catalog]
   );
 
-  if (error) return <p className="error-text">{error}</p>;
-  if (!catalog) return <p style={{ color: "var(--muted)" }}>Загрузка прайса…</p>;
+  if (error) {
+    return (
+      <>
+        <PageHeader title="Прайс" />
+        <FormError message={error} />
+      </>
+    );
+  }
 
-  const classes = catalog.vehicleClasses.filter((c) => c.active);
+  if (!catalog) {
+    return (
+      <>
+        <PageHeader title="Прайс" />
+        <p className="price-loading">Загрузка прайса…</p>
+      </>
+    );
+  }
+
+  const classes = catalog.vehicleClasses
+    .filter((c) => c.active)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  const catalogEmpty = !classes.length || !classId || !hasCatalogItems(catalog, classId);
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, fontSize: 22 }}>Прайс</h1>
+      <PageHeader title="Прайс" subtitle="Актуальные цены по классу автомобиля" />
 
-      <div className="price-class-tabs">
-        {classes.map((vc) => (
-          <button
-            key={vc.id}
-            type="button"
-            className={`price-class-tab ${classId === vc.id ? "active" : ""}`}
-            onClick={() => setClassId(vc.id)}
-          >
-            {vehicleClassIconSrc(vc.iconKey) && (
-              <img src={vehicleClassIconSrc(vc.iconKey)} alt="" />
-            )}
-            {vc.name}
-          </button>
-        ))}
-      </div>
+      <ClassTabs
+        items={classes.map((vc) => ({ id: vc.id, name: vc.name, iconKey: vc.iconKey }))}
+        value={classId}
+        onChange={setClassId}
+      />
 
-      {tabs.map((tab) => {
-        const items = catalog.services
-          .filter((s) => s.active && s.tabId === tab.id)
-          .sort((a, b) => a.sortOrder - b.sortOrder)
-          .map((s) => ({
-            service: s,
-            price: resolvePrice(s.id, classId, catalog, tab.slug),
-          }))
-          .filter((x) => x.price !== null);
+      {catalogEmpty ? (
+        <CatalogEmpty />
+      ) : (
+        tabs.map((tab) => {
+          const items = catalog.services
+            .filter((s) => s.active && s.tabId === tab.id)
+            .sort((a, b) => a.sortOrder - b.sortOrder)
+            .map((s) => ({
+              service: s,
+              price: resolvePrice(s.id, classId, catalog, tab.slug),
+            }))
+            .filter((x) => x.price !== null);
 
-        if (!items.length) return null;
+          if (!items.length) return null;
 
-        return (
-          <section key={tab.id} className="card" style={{ marginBottom: 12 }}>
-            <h2 style={{ margin: "0 0 8px", fontSize: 16 }}>{tab.name}</h2>
-            {items.map(({ service, price }) => (
-              <div key={service.id} className="service-row">
-                <div>
-                  <div className="service-name">{service.name}</div>
-                  {service.description && (
-                    <div className="service-desc">{service.description}</div>
-                  )}
-                </div>
-                <div className="service-price">
-                  <PriceLabel kopecks={price!} />
-                </div>
-              </div>
-            ))}
-          </section>
-        );
-      })}
+          return (
+            <Card key={tab.id} className="price-section">
+              <h2 className="ui-title-sm">{tab.name}</h2>
+              {items.map(({ service, price }) => (
+                <ListRow
+                  key={service.id}
+                  title={service.name}
+                  description={service.description || undefined}
+                  price={<PriceLabel kopecks={price!} />}
+                />
+              ))}
+            </Card>
+          );
+        })
+      )}
 
-      <section className="card site-block">
-        <h2>О мойке</h2>
-        <p style={{ margin: "0 0 4px", fontWeight: 600 }}>{catalog.site.name}</p>
-        <p style={{ margin: 0, color: "var(--muted)" }}>{catalog.site.city}</p>
-        <p style={{ margin: "8px 0 0", color: "var(--muted)" }}>{catalog.site.hoursText}</p>
-        <div className="site-actions">
-          <a className="btn btn-secondary" href={`tel:${catalog.site.phone}`}>
-            Позвонить
-          </a>
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => openRoute(catalog.site.lat, catalog.site.lon)}
-          >
-            Построить маршрут
-          </button>
-        </div>
-      </section>
+      <SiteInfoCard site={catalog.site} />
     </div>
   );
 }

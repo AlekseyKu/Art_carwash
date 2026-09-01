@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth";
 import { AppShell } from "./components/AppShell";
+import { InstallHint } from "./components/pwa/InstallHint";
 import { BookingPage } from "./pages/BookingPage";
 import { CabinetPage } from "./pages/CabinetPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -31,6 +32,7 @@ export function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <InstallHint />
         <Routes>
           <Route path="/" element={<SplashPage />} />
           <Route

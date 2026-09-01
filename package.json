@@ -6,6 +6,7 @@
     "dev:local": "pnpm --parallel --filter @art/local-api --filter @art/web dev",
     "dev:cloud": "pnpm --filter @art/cloud-api dev",
     "dev:pwa": "pnpm --filter @art/pwa dev",
+    "dev:pwa:local": "pnpm --parallel --filter @art/cloud-api --filter @art/pwa dev",
     "dev:bridge": "pnpm --filter @art/terminal-bridge start",
     "dev:desktop": "pnpm --filter @art/web build && pnpm --filter @art/desktop dev",
     "dist:pos": "pnpm --filter @art/desktop dist",

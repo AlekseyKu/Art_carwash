@@ -34,7 +34,7 @@ h2,
 }
 
 .ui-link {
-  color: var(--brand-primary);
+  color: var(--brand-primary-bright);
   font-weight: var(--weight-medium);
   text-decoration: none;
 }

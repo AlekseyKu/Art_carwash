@@ -1,11 +1,13 @@
 import { Link } from "react-router-dom";
+import { PageHeader } from "../components/layout/PageHeader";
+import { Card } from "../components/ui";
 
 export function PrivacyPage() {
   return (
-    <div className="app-main" style={{ paddingTop: 24, paddingBottom: 32 }}>
-      <h1 style={{ fontSize: 20 }}>Политика обработки персональных данных</h1>
-      <p style={{ color: "var(--muted)", fontSize: 13 }}>Версия 2026-08-30 · Автомойка у ЖД</p>
-      <div className="card" style={{ fontSize: 14, lineHeight: 1.6 }}>
+    <div className="app-main legal-page">
+      <PageHeader title="Политика обработки персональных данных" />
+      <p className="legal-page__meta">Версия 2026-08-30 · Автомойка у ЖД</p>
+      <Card className="legal-page__content">
         <p>
           Оператор обрабатывает персональные данные пользователей PWA «Автомойка у ЖД» для
           регистрации, записи на мойку, связи по телефону и ведения истории визитов.
@@ -23,12 +25,14 @@ export function PrivacyPage() {
           Вы можете запросить уточнение, обновление или удаление данных, обратившись по телефону{" "}
           <a href="tel:+79852741430">+7 (985) 274-14-30</a>.
         </p>
-        <p style={{ marginBottom: 0 }}>
+        <p>
           Полный текст политики — в репозитории проекта (doc/features/06-privacy-policy.md).
         </p>
-      </div>
-      <p style={{ marginTop: 16 }}>
-        <Link to="/register">← Назад</Link>
+      </Card>
+      <p className="ui-link-row">
+        <Link className="ui-link" to="/register">
+          ← Назад
+        </Link>
       </p>
     </div>
   );

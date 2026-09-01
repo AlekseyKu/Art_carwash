@@ -6,7 +6,7 @@
   min-height: var(--control-height);
   padding: 0 var(--space-5);
   border: 1px solid transparent;
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-button);
   font-family: var(--font);
   font-size: var(--text-base);
   font-weight: var(--weight-semibold);
@@ -45,8 +45,8 @@
 }
 
 .ui-btn--secondary:hover:not(:disabled) {
-  border-color: var(--brand-graphite-muted);
-  background: var(--surface);
+  border-color: var(--muted);
+  background: var(--surface-hover);
 }
 
 .ui-btn--ghost {
@@ -56,7 +56,7 @@
 }
 
 .ui-btn--ghost:hover:not(:disabled) {
-  background: var(--surface);
+  background: var(--surface-hover);
 }
 
 .ui-field {
@@ -88,7 +88,7 @@
 }
 
 .ui-input::placeholder {
-  color: var(--brand-graphite-soft);
+  color: var(--text-placeholder);
 }
 
 .ui-input:focus {
@@ -141,7 +141,7 @@
   min-height: var(--touch-min);
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-button);
   background: var(--surface-elevated);
   color: var(--ink);
   font-family: var(--font);
@@ -161,8 +161,8 @@
 
 .ui-chip--active {
   background: var(--brand-primary-soft);
-  border-color: var(--brand-primary);
-  color: var(--brand-primary);
+  border-color: var(--brand-primary-bright);
+  color: var(--brand-primary-soft-text);
 }
 
 .ui-chip:disabled {

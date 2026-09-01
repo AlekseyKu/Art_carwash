@@ -2,21 +2,26 @@
   /* Brand — Гранат (06-brand.md) */
   --brand-primary: #8e1d2c;
   --brand-primary-hover: #751824;
-  --brand-primary-soft: #f4e8ea;
+  --brand-primary-bright: #e5737e;
+  --brand-primary-soft: rgba(142, 29, 44, 0.32);
+  --brand-primary-soft-text: #f0aab2;
   --brand-graphite: #303236;
   --brand-graphite-muted: #5c6066;
-  --brand-graphite-soft: #d4d6d9;
+  --brand-graphite-soft: #a3a8b0;
 
-  /* Semantic */
-  --ink: #303236;
-  --muted: #5c6066;
-  --surface: #f2f2f3;
-  --surface-elevated: #ffffff;
-  --border: #d4d6d9;
-  --border-subtle: #e8e9eb;
-  --success: #2f9e6b;
-  --danger: #c43c3c;
-  --warning: #c48a1a;
+  /* Semantic — тёмная тема (графит) */
+  --ink: #f3f4f6;
+  --muted: #a3a8b0;
+  --text-placeholder: #8a9099;
+  --surface: #303236;
+  --surface-elevated: #3c3f45;
+  --surface-hover: #454950;
+  --surface-sunken: #2a2d32;
+  --border: #52565e;
+  --border-subtle: #454950;
+  --success: #3cb87a;
+  --danger: #e86868;
+  --warning: #e0a040;
 
   /* Typography */
   --font: "Montserrat", system-ui, sans-serif;
@@ -49,6 +54,7 @@
   --radius-md: 14px;
   --radius-lg: 16px;
   --radius-pill: 999px;
+  --radius-button: var(--radius-lg);
 
   /* Controls */
   --control-height: 52px;
@@ -61,10 +67,11 @@
 
   /* Motion */
   --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in-out: ease-in-out;
   --duration-fast: 150ms;
   --duration-normal: 400ms;
 
   /* Elevation */
-  --shadow-card: 0 4px 20px rgba(48, 50, 54, 0.06);
-  --shadow-focus: 0 0 0 3px var(--brand-primary-soft);
+  --shadow-card: 0 8px 28px rgba(0, 0, 0, 0.32);
+  --shadow-focus: 0 0 0 3px rgba(142, 29, 44, 0.45);
 }

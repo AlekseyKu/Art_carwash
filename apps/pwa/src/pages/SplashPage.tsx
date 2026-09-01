@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth";
+import { SplashScreen } from "../components/layout/SplashScreen";
 
 export function SplashPage() {
   const { ready, customer, onboardingDone } = useAuth();
@@ -21,19 +22,12 @@ export function SplashPage() {
     navigate(onboardingDone ? "/login" : "/welcome", { replace: true });
   }, [ready, minDelay, customer, onboardingDone, navigate]);
 
-  return (
-    <div className="splash">
-      <div>
-        <h1>Автомойка у ЖД</h1>
-        <p>г. Ступино</p>
-      </div>
-    </div>
-  );
+  return <SplashScreen />;
 }
 
 export function SplashGate({ children }: { children: React.ReactNode }) {
   const { ready } = useAuth();
-  if (!ready) return <SplashPage />;
+  if (!ready) return <SplashScreen />;
   return <>{children}</>;
 }
 

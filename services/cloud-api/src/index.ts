@@ -14,7 +14,19 @@ import {
 import { initCustomerSchema, registerCustomerRoutes } from "./customer.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dataDir = process.env.ART_CLOUD_DATA_DIR ?? path.join(__dirname, "../../../data");
+
+function resolveDataDir(): string {
+  const fallback = path.join(__dirname, "../../../data");
+  const configured = process.env.ART_CLOUD_DATA_DIR;
+  if (!configured) return fallback;
+  // deploy/.env на VPS: /data; на Windows используем data/ в репо
+  if (process.platform === "win32" && configured.replace(/\\/g, "/") === "/data") {
+    return fallback;
+  }
+  return configured;
+}
+
+const dataDir = resolveDataDir();
 fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(path.join(dataDir, "cloud.db"));

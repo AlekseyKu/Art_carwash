@@ -21,6 +21,7 @@ export function WelcomePage() {
   return (
     <OnboardingLayout
       title="Автомойка у ЖД"
+      lead="Прайс, запись и личный кабинет — в одном приложении"
       footer={
         <>
           <ButtonLink to="/register" block>
@@ -36,10 +37,15 @@ export function WelcomePage() {
     >
       <Card>
         <ul className="welcome-list">
-          {features.map((item) => (
+          {features.map((item, index) => (
             <li key={item.title} className="welcome-list__item">
-              <strong>{item.title}</strong>
-              <span>{item.text}</span>
+              <span className="welcome-list__badge" aria-hidden>
+                {index + 1}
+              </span>
+              <div className="welcome-list__body">
+                <div className="welcome-list__title">{item.title}</div>
+                <div className="welcome-list__text">{item.text}</div>
+              </div>
             </li>
           ))}
         </ul>

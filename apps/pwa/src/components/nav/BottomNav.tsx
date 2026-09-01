@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
+import { ExpandingLabel } from "./ExpandingLabel";
 
 interface NavTab {
   to: string;
@@ -39,25 +40,67 @@ const tabs: NavTab[] = [
   },
 ];
 
+function BrandLogo() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden>
+      <path
+        d="M16 6c-1.1 5.4-5.5 9.9-5.5 15.9 0 3 2.5 5.5 5.5 5.5s5.5-2.5 5.5-5.5C21.5 15.9 17.1 11.4 16 6Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+function NavSegment({ tab }: { tab: NavTab }) {
+  return (
+    <NavLink
+      to={tab.to}
+      end
+      className={({ isActive }) =>
+        ["bottom-nav__segment", isActive ? "bottom-nav__segment--active" : ""]
+          .filter(Boolean)
+          .join(" ")
+      }
+      aria-label={tab.label}
+    >
+      {({ isActive }) => (
+        <>
+          <span className="bottom-nav__icon">{tab.icon}</span>
+          <ExpandingLabel label={tab.label} expanded={isActive} />
+        </>
+      )}
+    </NavLink>
+  );
+}
+
 export function BottomNav() {
+  const { pathname } = useLocation();
+  const logoActive = pathname === "/app/price" || pathname === "/app";
+
   return (
     <nav className="bottom-nav" aria-label="Основная навигация">
       <div className="bottom-nav__bar">
-        {tabs.map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            className={({ isActive }) =>
-              ["bottom-nav__item", isActive ? "bottom-nav__item--active" : ""]
-                .filter(Boolean)
-                .join(" ")
-            }
-            end
-          >
-            <span className="bottom-nav__icon">{tab.icon}</span>
-            <span className="bottom-nav__label">{tab.label}</span>
-          </NavLink>
-        ))}
+        <NavLink
+          to="/app/price"
+          end
+          className={["bottom-nav__logo", logoActive ? "bottom-nav__logo--active" : ""]
+            .filter(Boolean)
+            .join(" ")}
+          aria-label="Автомойка у ЖД"
+        >
+          <BrandLogo />
+        </NavLink>
+
+        <div className="bottom-nav__tabs">
+          <div className="bottom-nav__cluster">
+            {tabs.map((tab, index) => (
+              <div key={tab.to} className="bottom-nav__segment-wrap">
+                {index > 0 && <span className="bottom-nav__spacer" aria-hidden />}
+                <NavSegment tab={tab} />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </nav>
   );

@@ -1,22 +1,37 @@
 import { useAuth } from "../auth";
+import { PageHeader } from "../components/layout/PageHeader";
+import { Button, Card, InfoRow, StubPanel } from "../components/ui";
+
+function GarageIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4 10 12 4l8 6v10H4V10Z" strokeLinejoin="round" />
+      <path d="M9 20v-6h6v6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export function CabinetPage() {
   const { customer, logout } = useAuth();
 
   return (
     <div>
-      <h1 style={{ marginTop: 0, fontSize: 22 }}>Кабинет</h1>
-      <div className="card">
-        <p style={{ margin: "0 0 4px", color: "var(--muted)", fontSize: 13 }}>Телефон</p>
-        <p style={{ margin: 0, fontWeight: 600 }}>{customer?.phoneDisplay ?? customer?.phone}</p>
+      <PageHeader title="Кабинет" subtitle="Ваш аккаунт и записи" />
+
+      <Card className="profile-card">
+        <InfoRow label="Телефон" value={customer?.phoneDisplay ?? customer?.phone ?? "—"} />
+        {customer?.name && <InfoRow label="Имя" value={customer.name} />}
+      </Card>
+
+      <StubPanel title="Гараж и история" icon={<GarageIcon />}>
+        <p className="stub-panel__text">Список автомобилей и история визитов появятся в фазе B.</p>
+      </StubPanel>
+
+      <div className="page-actions">
+        <Button type="button" variant="secondary" block onClick={() => void logout()}>
+          Выйти
+        </Button>
       </div>
-      <div className="stub-page">
-        <h2>Гараж и история</h2>
-        <p>Будут доступны в фазе B.</p>
-      </div>
-      <button type="button" className="btn btn-secondary btn-block" onClick={() => void logout()}>
-        Выйти
-      </button>
     </div>
   );
 }

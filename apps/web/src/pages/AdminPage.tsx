@@ -2250,12 +2250,29 @@ export function AdminPage() {
                 type="button"
                 className="btn-primary"
                 onClick={() =>
-                  void adminApi.sync(token).then((r) =>
-                    setSyncMsg(r.error ? r.error : `Синхронизировано: ${r.synced}`)
-                  )
+                  void adminApi.sync(token).then((r) => {
+                    if (r.error) setSyncMsg(r.error);
+                    else if (r.synced === 0) {
+                      setSyncMsg("Очередь пуста — нечего отправлять. Сначала «Опубликовать каталог».");
+                    } else setSyncMsg(`Синхронизировано: ${r.synced}`);
+                  })
                 }
               >
                 Синхронизировать сейчас
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() =>
+                  void adminApi.publishCatalog(token).then((r) => {
+                    if (r.error) setSyncMsg(r.error);
+                    else if (r.synced === 0) {
+                      setSyncMsg("Каталог в очереди, но cloud не ответил или очередь уже была пуста.");
+                    } else setSyncMsg(`Каталог опубликован, отправлено: ${r.synced}`);
+                  })
+                }
+              >
+                Опубликовать каталог
               </button>
             </div>
             {syncMsg && <p className="muted">{syncMsg}</p>}
