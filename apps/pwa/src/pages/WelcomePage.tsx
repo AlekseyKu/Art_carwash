@@ -1,28 +1,49 @@
 import { Link } from "react-router-dom";
+import { OnboardingLayout } from "../components/layout/OnboardingLayout";
+import { ButtonLink, Card } from "../components/ui";
+
+const features = [
+  {
+    title: "Прайс",
+    text: "Актуальные цены по классу авто",
+  },
+  {
+    title: "Запись",
+    text: "Выберите удобное время на мойку",
+  },
+  {
+    title: "Кабинет",
+    text: "Ваши авто и история посещений",
+  },
+] as const;
 
 export function WelcomePage() {
   return (
-    <div className="app-main" style={{ paddingTop: 32 }}>
-      <h1 style={{ marginTop: 0 }}>Автомойка у ЖД</h1>
-      <div className="card" style={{ marginBottom: 16 }}>
-        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-          <li>
-            <strong>Прайс</strong> — актуальные цены по классу авто
-          </li>
-          <li>
-            <strong>Запись</strong> — выберите время на мойку
-          </li>
-          <li>
-            <strong>Кабинет</strong> — ваши авто и история
-          </li>
+    <OnboardingLayout
+      title="Автомойка у ЖД"
+      footer={
+        <>
+          <ButtonLink to="/register" block>
+            Далее
+          </ButtonLink>
+          <p className="ui-link-row">
+            <Link className="ui-link" to="/login">
+              У меня уже есть аккаунт
+            </Link>
+          </p>
+        </>
+      }
+    >
+      <Card>
+        <ul className="welcome-list">
+          {features.map((item) => (
+            <li key={item.title} className="welcome-list__item">
+              <strong>{item.title}</strong>
+              <span>{item.text}</span>
+            </li>
+          ))}
         </ul>
-      </div>
-      <Link to="/register" className="btn btn-primary btn-block">
-        Далее
-      </Link>
-      <p style={{ textAlign: "center", marginTop: 16 }}>
-        <Link to="/login">У меня уже есть аккаунт</Link>
-      </p>
-    </div>
+      </Card>
+    </OnboardingLayout>
   );
 }

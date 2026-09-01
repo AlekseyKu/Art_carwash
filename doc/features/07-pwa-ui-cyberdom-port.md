@@ -140,9 +140,10 @@ apps/pwa/src/
 
 ### UI-2 — Shell и навигация (1 день)
 
-- [ ] `AppScaffold` + `BottomNav` с expanding label (референс: `expanding_bottom_nav.dart`)
-- [ ] Активный таб: primary + подпись; неактивные: muted
-- [ ] Safe-area, `nav-h: 64px`
+- [x] `AppScaffold` + `BottomNav` с expanding label (референс: `expanding_bottom_nav.dart`)
+- [x] Активный таб: primary + подпись; неактивные: muted
+- [x] Safe-area, `nav-h: 64px`
+- [x] `OnboardingLayout` + Welcome на новых компонентах
 
 ### UI-3 — Прайс (1–2 дня)
 
