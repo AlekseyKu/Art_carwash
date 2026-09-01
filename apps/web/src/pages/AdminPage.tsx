@@ -201,7 +201,9 @@ export function AdminPage() {
   const [editingStaffWasherActive, setEditingStaffWasherActive] = useState(true);
   const [masterForm, setMasterForm] = useState({ current: "", next: "" });
   const priceDirty = Object.keys(priceDirtyKeys).some((k) => priceDirtyKeys[k]);
-  const [syncUrl, setSyncUrl] = useState("http://127.0.0.1:3002");
+  const [syncUrl, setSyncUrl] = useState("https://carwash-jd.ru");
+  const [syncToken, setSyncToken] = useState("");
+  const [hasSyncToken, setHasSyncToken] = useState(false);
   const [syncMsg, setSyncMsg] = useState("");
   const [updateInfo, setUpdateInfo] = useState<{
     desktop?: boolean;
@@ -298,6 +300,7 @@ export function AdminPage() {
       notes: String(t?.notes ?? ""),
     });
     if (sync?.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
+    setHasSyncToken(!!sync?.hasToken);
 
     const activeVc = vc.filter((c) => c.active).sort((a, b) => a.sortOrder - b.sortOrder);
     const preferred =
@@ -2206,9 +2209,23 @@ export function AdminPage() {
               <TouchField
                 title="URL cloud-api"
                 mode="ascii"
-                placeholder="http://127.0.0.1:3002"
+                placeholder="https://carwash-jd.ru"
                 value={syncUrl}
                 onChange={setSyncUrl}
+              />
+              <p className="muted" style={{ margin: "6px 0 0", fontSize: 13 }}>
+                Базовый адрес без <code>/api/sync</code> — путь добавится автоматически.
+              </p>
+            </div>
+            <div className="field">
+              <label>Sync token</label>
+              <TouchField
+                title="Sync token"
+                mode="ascii"
+                secret
+                placeholder={hasSyncToken ? "•••••••• (задан — введите новый для замены)" : "токен с VPS"}
+                value={syncToken}
+                onChange={setSyncToken}
               />
             </div>
             <div className="row">
@@ -2216,10 +2233,18 @@ export function AdminPage() {
                 type="button"
                 className="btn-secondary"
                 onClick={() =>
-                  void adminApi.saveSyncSettings(token, syncUrl).then(() => setSyncMsg("URL сохранён"))
+                  void adminApi
+                    .saveSyncSettings(token, syncUrl, syncToken.trim() || undefined)
+                    .then(() => {
+                      if (syncToken.trim()) {
+                        setSyncToken("");
+                        setHasSyncToken(true);
+                      }
+                      setSyncMsg("Настройки sync сохранены");
+                    })
                 }
               >
-                Сохранить URL
+                Сохранить
               </button>
               <button
                 type="button"

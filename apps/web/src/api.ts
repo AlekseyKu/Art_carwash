@@ -586,7 +586,9 @@ export const adminApi = {
       body: JSON.stringify({}),
     }),
   syncSettings: (token: string) =>
-    request<{ cloudSyncUrl: string | null }>("/api/admin/sync-settings", { token }),
+    request<{ cloudSyncUrl: string | null; hasToken: boolean }>("/api/admin/sync-settings", {
+      token,
+    }),
   saveSyncSettings: (token: string, cloudSyncUrl: string, cloudSyncToken?: string) =>
     request("/api/admin/sync-settings", {
       method: "PUT",
