@@ -14,7 +14,7 @@ Outbox → cloud-api, PWA отчётов `/reports`, пароль собстве
 
 ## Этап 4 — Клиентское PWA «Автомойка у ЖД»
 
-Онбординг, прайс из облака, кабинет, запись (1 основная + доп.), календарь на кассе, скрытый вход собственника (пароль), деплой cloud+PWA Docker на VPS. Оплата на мойке. Спека: [features/06-customer-pwa.md](features/06-customer-pwa.md) (фазы A–C), ПДн: [features/06-privacy-policy.md](features/06-privacy-policy.md). Редизайн UI: [features/07-pwa-ui-cyberdom-port.md](features/07-pwa-ui-cyberdom-port.md).
+Онбординг, прайс из облака, кабинет+гараж, запись (1 основная + доп.), календарь на кассе, CRM/клиенты на кассе, скрытый вход собственника (пароль), деплой cloud+PWA Docker на VPS. Оплата на мойке. Спека: [features/06-customer-pwa.md](features/06-customer-pwa.md) (фазы A–C), ПДн: [features/06-privacy-policy.md](features/06-privacy-policy.md). Редизайн UI: [features/07-pwa-ui-cyberdom-port.md](features/07-pwa-ui-cyberdom-port.md).
 
 ## Этап 5 — Лояльность UI
 

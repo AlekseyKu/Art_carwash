@@ -185,10 +185,19 @@ export const api = {
       `/api/clients/by-plate?plate=${encodeURIComponent(plate)}`,
       { token }
     ),
+  searchClients: (query: string, token: string, limit = 20) =>
+    request<{ clients: ClientDto[] }>(
+      `/api/clients?query=${encodeURIComponent(query)}&limit=${limit}`,
+      { token }
+    ),
+  listClients: (token: string, limit = 100) =>
+    request<{ clients: ClientDto[] }>(`/api/clients?limit=${limit}`, { token }),
   upsertClient: (
     body: { plate?: string; phone?: string; name?: string; id?: string },
     token: string
   ) => request<ClientDto>("/api/clients", { method: "POST", body: JSON.stringify(body), token }),
+  deleteClient: (id: string, token: string) =>
+    request<{ ok: boolean }>(`/api/clients/${id}`, { method: "DELETE", token }),
   attachClient: (orderId: string, clientId: string | null, token: string) =>
     request<OrderDto>(`/api/orders/${orderId}/client`, {
       method: "PUT",

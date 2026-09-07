@@ -132,6 +132,64 @@ export function findClientById(id: string): ClientDto | null {
   return row ? mapClient(row) : null;
 }
 
+/** Поиск по телефону или госномеру (частичное совпадение). */
+export function searchClients(queryRaw: string, limit = 20): ClientDto[] {
+  const q = queryRaw.trim();
+  if (!q) return listClients(limit);
+
+  const plate = normalizePlate(q);
+  const digits = q.replace(/\D/g, "");
+  const phoneLike = digits.length >= 3 ? `%${digits}%` : null;
+  const plateLike = plate.length >= 2 ? `%${plate}%` : null;
+  const nameLike = `%${q}%`;
+
+  const rows = db
+    .prepare(
+      `SELECT id, phone, plate_number, name FROM clients
+       WHERE
+         (? IS NOT NULL AND replace(replace(replace(coalesce(phone,''),'+',''),' ',''),'-','') LIKE ?)
+         OR (? IS NOT NULL AND plate_number LIKE ?)
+         OR (name IS NOT NULL AND name LIKE ?)
+       ORDER BY updated_at DESC
+       LIMIT ?`
+    )
+    .all(
+      phoneLike,
+      phoneLike,
+      plateLike,
+      plateLike,
+      nameLike,
+      limit
+    ) as { id: string; phone: string | null; plate_number: string | null; name: string | null }[];
+
+  return rows.map(mapClient);
+}
+
+export function listClients(limit = 100): ClientDto[] {
+  const rows = db
+    .prepare(
+      `SELECT id, phone, plate_number, name FROM clients
+       ORDER BY updated_at DESC
+       LIMIT ?`
+    )
+    .all(limit) as {
+    id: string;
+    phone: string | null;
+    plate_number: string | null;
+    name: string | null;
+  }[];
+  return rows.map(mapClient);
+}
+
+export function deleteClient(id: string): boolean {
+  const existing = findClientById(id);
+  if (!existing) return false;
+  db.prepare("UPDATE orders SET client_id = NULL WHERE client_id = ?").run(id);
+  db.prepare("DELETE FROM loyalty_accounts WHERE client_id = ?").run(id);
+  db.prepare("DELETE FROM clients WHERE id = ?").run(id);
+  return true;
+}
+
 export function upsertClient(input: {
   plate?: string;
   phone?: string;

@@ -8,6 +8,7 @@ import {
   setWasherToken,
   type OrderDto,
   type OrderItemInput,
+  type ClientDto,
   type ShiftDto,
   type ShiftReportDto,
   type VehicleClassDto,
@@ -113,6 +114,10 @@ export function PosPage() {
   const [recentKey, setRecentKey] = useState(0);
   const [recentOpen, setRecentOpen] = useState(false);
   const [classInfoOpen, setClassInfoOpen] = useState(false);
+  const [clientQuery, setClientQuery] = useState("");
+  const [clientHits, setClientHits] = useState<ClientDto[]>([]);
+  const [clientSearchBusy, setClientSearchBusy] = useState(false);
+  const [attachedClient, setAttachedClient] = useState<ClientDto | null>(null);
   const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
   const [shift, setShift] = useState<ShiftDto | null>(null);
   const [shiftBusy, setShiftBusy] = useState(false);
@@ -147,6 +152,9 @@ export function PosPage() {
     setPendingPay(null);
     setRecentOpen(false);
     setClassInfoOpen(false);
+    setClientQuery("");
+    setClientHits([]);
+    setAttachedClient(null);
     setVehicleClassId(null);
     setWasherName("");
     setShift(null);
@@ -447,6 +455,49 @@ export function PosPage() {
     }
   }
 
+  useEffect(() => {
+    if (!token) return;
+    const q = clientQuery.trim();
+    if (q.length < 2) {
+      setClientHits([]);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      setClientSearchBusy(true);
+      api
+        .searchClients(q, token, 8)
+        .then((res) => setClientHits(res.clients))
+        .catch(() => setClientHits([]))
+        .finally(() => setClientSearchBusy(false));
+    }, 250);
+    return () => window.clearTimeout(handle);
+  }, [clientQuery, token]);
+
+  async function applyClient(client: ClientDto) {
+    if (!token || !order) return;
+    setError("");
+    try {
+      const updated = await api.attachClient(order.id, client.id, token);
+      applyOrder(updated);
+      setAttachedClient(client);
+      setClientQuery("");
+      setClientHits([]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось привязать клиента");
+    }
+  }
+
+  async function clearAttachedClient() {
+    if (!token || !order) return;
+    try {
+      const updated = await api.attachClient(order.id, null, token);
+      applyOrder(updated);
+      setAttachedClient(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось отвязать клиента");
+    }
+  }
+
   async function logout() {
     if (token) await api.logout(token).catch(() => undefined);
     forceLogout();
@@ -711,6 +762,9 @@ export function PosPage() {
           >
             {shift ? `Смена ${formatShiftDate(shift.openedAt)}` : "Смена не открыта"}
           </button>
+          <Link to="/clients" className="topbar-pill">
+            Клиенты
+          </Link>
           <Link to="/admin" className="topbar-pill">
             Админ
           </Link>
@@ -788,6 +842,49 @@ export function PosPage() {
                 />
               </svg>
             </button>
+
+            <div className="client-search">
+              <TouchField
+                className="client-search__input"
+                value={clientQuery}
+                onChange={setClientQuery}
+                placeholder="Телефон или номер"
+                aria-label="Поиск клиента"
+              />
+              {attachedClient && !clientQuery && (
+                <div className="client-search__attached">
+                  <span>
+                    {attachedClient.plateNumber ?? "—"}
+                    {attachedClient.name ? ` · ${attachedClient.name}` : ""}
+                    {attachedClient.phone ? ` · ${attachedClient.phone}` : ""}
+                  </span>
+                  <button type="button" className="client-search__clear" onClick={() => void clearAttachedClient()}>
+                    ×
+                  </button>
+                </div>
+              )}
+              {(clientHits.length > 0 || clientSearchBusy) && clientQuery.trim().length >= 2 && (
+                <div className="client-search__dropdown" role="listbox">
+                  {clientSearchBusy && <div className="client-search__hint">Поиск…</div>}
+                  {clientHits.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      className="client-search__hit"
+                      onClick={() => void applyClient(c)}
+                    >
+                      <strong>{c.plateNumber ?? "без номера"}</strong>
+                      <span>
+                        {[c.name, c.phone].filter(Boolean).join(" · ") || "Клиент"}
+                      </span>
+                    </button>
+                  ))}
+                  {!clientSearchBusy && clientHits.length === 0 && (
+                    <div className="client-search__hint">Ничего не найдено</div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 

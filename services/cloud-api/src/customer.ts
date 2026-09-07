@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import type { DatabaseSync } from "node:sqlite";
 import { getCatalogSnapshot } from "./catalog.js";
 import { formatPhoneDisplay, normalizePhone } from "./phone.js";
+import { parseRfPlate } from "./plate.js";
 
 const PRIVACY_VERSION = "2026-08-30";
 const SESSION_DAYS = 30;
@@ -27,6 +28,20 @@ export function initCustomerSchema(db: DatabaseSync) {
       created_at TEXT NOT NULL,
       expires_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS vehicles (
+      id TEXT PRIMARY KEY,
+      customer_id TEXT NOT NULL,
+      plate_number TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      nickname TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (customer_id, plate_number)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_vehicles_customer ON vehicles(customer_id);
   `);
 }
 
@@ -66,6 +81,72 @@ function createSession(db: DatabaseSync, customerId: string) {
     "INSERT INTO customer_sessions (token, customer_id, created_at, expires_at) VALUES (?, ?, ?, ?)"
   ).run(token, customerId, now.toISOString(), expires);
   return { token, expiresAt: expires };
+}
+
+type VehicleRow = {
+  id: string;
+  customer_id: string;
+  plate_number: string;
+  class_id: string;
+  nickname: string | null;
+  is_default: number;
+  created_at: string;
+  updated_at: string;
+};
+
+function mapVehicle(row: VehicleRow) {
+  return {
+    id: row.id,
+    plateNumber: row.plate_number,
+    classId: row.class_id,
+    nickname: row.nickname,
+    isDefault: row.is_default === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function listVehicles(db: DatabaseSync, customerId: string) {
+  const rows = db
+    .prepare(
+      `SELECT * FROM vehicles
+       WHERE customer_id = ?
+       ORDER BY is_default DESC, created_at ASC`
+    )
+    .all(customerId) as VehicleRow[];
+  return rows.map(mapVehicle);
+}
+
+function getVehicle(db: DatabaseSync, customerId: string, id: string) {
+  return db
+    .prepare("SELECT * FROM vehicles WHERE id = ? AND customer_id = ?")
+    .get(id, customerId) as VehicleRow | undefined;
+}
+
+function clearDefaults(db: DatabaseSync, customerId: string) {
+  db.prepare("UPDATE vehicles SET is_default = 0 WHERE customer_id = ?").run(customerId);
+}
+
+function ensureOneDefault(db: DatabaseSync, customerId: string) {
+  const def = db
+    .prepare("SELECT id FROM vehicles WHERE customer_id = ? AND is_default = 1")
+    .get(customerId);
+  if (def) return;
+  const first = db
+    .prepare(
+      "SELECT id FROM vehicles WHERE customer_id = ? ORDER BY created_at ASC LIMIT 1"
+    )
+    .get(customerId) as { id: string } | undefined;
+  if (first) {
+    db.prepare("UPDATE vehicles SET is_default = 1 WHERE id = ?").run(first.id);
+  }
+}
+
+function classExistsInCatalog(db: DatabaseSync, classId: string): boolean {
+  const snap = getCatalogSnapshot(db) as {
+    vehicleClasses?: { id: string; active?: boolean }[];
+  };
+  return (snap.vehicleClasses ?? []).some((c) => c.id === classId && c.active !== false);
 }
 
 export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
@@ -153,9 +234,156 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
     };
   });
 
+  app.put<{ Body: { name?: string | null } }>("/api/customer/me", async (req, reply) => {
+    const c = requireCustomer(db, req);
+    if (!("name" in (req.body ?? {}))) {
+      return reply.code(400).send({ error: "Укажите name" });
+    }
+    const raw = req.body?.name;
+    const name =
+      raw == null || String(raw).trim() === "" ? null : String(raw).trim().slice(0, 80);
+    const now = new Date().toISOString();
+    db.prepare("UPDATE customer_accounts SET name = ?, updated_at = ? WHERE id = ?").run(
+      name,
+      now,
+      c.customerId
+    );
+    return {
+      id: c.customerId,
+      phone: c.phone,
+      phoneDisplay: formatPhoneDisplay(c.phone),
+      name,
+    };
+  });
+
   app.get("/api/customer/catalog", async (req) => {
     requireCustomer(db, req);
     return getCatalogSnapshot(db);
+  });
+
+  app.get("/api/customer/vehicles", async (req) => {
+    const c = requireCustomer(db, req);
+    return { vehicles: listVehicles(db, c.customerId) };
+  });
+
+  app.post<{
+    Body: {
+      plateNumber?: string;
+      classId?: string;
+      nickname?: string | null;
+      isDefault?: boolean;
+    };
+  }>("/api/customer/vehicles", async (req, reply) => {
+    const c = requireCustomer(db, req);
+    const plate = parseRfPlate(req.body.plateNumber ?? "");
+    if (!plate) {
+      return reply.code(400).send({ error: "Некорректный госномер (пример А170РТ90)" });
+    }
+    const classId = (req.body.classId ?? "").trim();
+    if (!classId || !classExistsInCatalog(db, classId)) {
+      return reply.code(400).send({ error: "Выберите класс автомобиля" });
+    }
+    const nickname =
+      req.body.nickname == null || String(req.body.nickname).trim() === ""
+        ? null
+        : String(req.body.nickname).trim().slice(0, 40);
+
+    const existing = db
+      .prepare("SELECT id FROM vehicles WHERE customer_id = ? AND plate_number = ?")
+      .get(c.customerId, plate);
+    if (existing) return reply.code(409).send({ error: "Такой номер уже в гараже" });
+
+    const count = (
+      db.prepare("SELECT COUNT(*) AS n FROM vehicles WHERE customer_id = ?").get(c.customerId) as {
+        n: number;
+      }
+    ).n;
+    const makeDefault = req.body.isDefault === true || count === 0;
+
+    const id = nanoid();
+    const now = new Date().toISOString();
+    if (makeDefault) clearDefaults(db, c.customerId);
+
+    db.prepare(
+      `INSERT INTO vehicles
+       (id, customer_id, plate_number, class_id, nickname, is_default, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(id, c.customerId, plate, classId, nickname, makeDefault ? 1 : 0, now, now);
+
+    return mapVehicle(getVehicle(db, c.customerId, id)!);
+  });
+
+  app.put<{
+    Params: { id: string };
+    Body: {
+      plateNumber?: string;
+      classId?: string;
+      nickname?: string | null;
+      isDefault?: boolean;
+    };
+  }>("/api/customer/vehicles/:id", async (req, reply) => {
+    const c = requireCustomer(db, req);
+    const row = getVehicle(db, c.customerId, req.params.id);
+    if (!row) return reply.code(404).send({ error: "Авто не найдено" });
+
+    let plate = row.plate_number;
+    if (req.body.plateNumber != null) {
+      const parsed = parseRfPlate(req.body.plateNumber);
+      if (!parsed) {
+        return reply.code(400).send({ error: "Некорректный госномер (пример А170РТ90)" });
+      }
+      plate = parsed;
+    }
+
+    let classId = row.class_id;
+    if (req.body.classId != null) {
+      classId = String(req.body.classId).trim();
+      if (!classId || !classExistsInCatalog(db, classId)) {
+        return reply.code(400).send({ error: "Выберите класс автомобиля" });
+      }
+    }
+
+    let nickname = row.nickname;
+    if ("nickname" in (req.body ?? {})) {
+      nickname =
+        req.body.nickname == null || String(req.body.nickname).trim() === ""
+          ? null
+          : String(req.body.nickname).trim().slice(0, 40);
+    }
+
+    const dup = db
+      .prepare(
+        "SELECT id FROM vehicles WHERE customer_id = ? AND plate_number = ? AND id != ?"
+      )
+      .get(c.customerId, plate, row.id);
+    if (dup) return reply.code(409).send({ error: "Такой номер уже в гараже" });
+
+    const makeDefault = req.body.isDefault === true;
+    const now = new Date().toISOString();
+    if (makeDefault) clearDefaults(db, c.customerId);
+
+    db.prepare(
+      `UPDATE vehicles
+       SET plate_number = ?, class_id = ?, nickname = ?,
+           is_default = CASE WHEN ? THEN 1 ELSE is_default END,
+           updated_at = ?
+       WHERE id = ? AND customer_id = ?`
+    ).run(plate, classId, nickname, makeDefault ? 1 : 0, now, row.id, c.customerId);
+
+    ensureOneDefault(db, c.customerId);
+    return mapVehicle(getVehicle(db, c.customerId, row.id)!);
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/customer/vehicles/:id", async (req, reply) => {
+    const c = requireCustomer(db, req);
+    const row = getVehicle(db, c.customerId, req.params.id);
+    if (!row) return reply.code(404).send({ error: "Авто не найдено" });
+    db.prepare("DELETE FROM vehicles WHERE id = ? AND customer_id = ?").run(
+      row.id,
+      c.customerId
+    );
+    ensureOneDefault(db, c.customerId);
+    return { ok: true };
   });
 }
 

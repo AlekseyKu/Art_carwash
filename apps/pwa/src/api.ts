@@ -5,6 +5,16 @@ export interface Customer {
   name: string | null;
 }
 
+export interface Vehicle {
+  id: string;
+  plateNumber: string;
+  classId: string;
+  nickname: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CatalogSnapshot {
   version: string;
   updatedAt: string;
@@ -72,9 +82,11 @@ async function api<T>(
   init?: RequestInit & { auth?: boolean }
 ): Promise<T> {
   const headers: Record<string, string> = {
-    "content-type": "application/json",
     ...(init?.headers as Record<string, string>),
   };
+  if (init?.body != null) {
+    headers["content-type"] = "application/json";
+  }
   if (init?.auth !== false) {
     const token = getToken();
     if (token) headers.authorization = `Bearer ${token}`;
@@ -116,8 +128,50 @@ export const apiClient = {
     return api<Customer>("/api/customer/me");
   },
 
+  updateMe(body: { name: string | null }) {
+    return api<Customer>("/api/customer/me", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
   catalog() {
     return api<CatalogSnapshot>("/api/customer/catalog");
+  },
+
+  listVehicles() {
+    return api<{ vehicles: Vehicle[] }>("/api/customer/vehicles");
+  },
+
+  createVehicle(body: {
+    plateNumber: string;
+    classId: string;
+    nickname?: string | null;
+    isDefault?: boolean;
+  }) {
+    return api<Vehicle>("/api/customer/vehicles", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  updateVehicle(
+    id: string,
+    body: {
+      plateNumber?: string;
+      classId?: string;
+      nickname?: string | null;
+      isDefault?: boolean;
+    }
+  ) {
+    return api<Vehicle>(`/api/customer/vehicles/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+
+  deleteVehicle(id: string) {
+    return api<{ ok: boolean }>(`/api/customer/vehicles/${id}`, { method: "DELETE" });
   },
 
   ownerLogin(password: string) {

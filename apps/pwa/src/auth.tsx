@@ -16,6 +16,7 @@ interface AuthState {
     pdnAccepted: boolean;
   }) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (name: string | null) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -72,6 +73,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setToken(null);
         setCustomer(null);
+      },
+      async updateProfile(name) {
+        const next = await apiClient.updateMe({ name });
+        setCustomer(next);
       },
     }),
     [ready, customer, onboardingDone]

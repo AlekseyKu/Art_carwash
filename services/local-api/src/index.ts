@@ -8,10 +8,13 @@ import path from "node:path";
 import { nanoid } from "nanoid";
 import {
   attachClientToOrder,
+  deleteClient,
   ensureClientTables,
   findClientByPlate,
   latestAnprEvent,
+  listClients,
   recordAnprEvent,
+  searchClients,
   seedDemoClient,
   upsertClient,
 } from "./clients.js";
@@ -330,6 +333,14 @@ app.get<{ Querystring: { plate: string } }>("/api/clients/by-plate", async (req)
   return { client: findClientByPlate(plate) };
 });
 
+app.get<{ Querystring: { query?: string; limit?: string } }>("/api/clients", async (req) => {
+  requireWasher(req);
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));
+  const query = (req.query.query ?? "").trim();
+  const clients = query ? searchClients(query, limit) : listClients(limit);
+  return { clients };
+});
+
 app.post<{ Body: { plate?: string; phone?: string; name?: string; id?: string } }>(
   "/api/clients",
   async (req) => {
@@ -337,6 +348,13 @@ app.post<{ Body: { plate?: string; phone?: string; name?: string; id?: string } 
     return upsertClient(req.body ?? {});
   }
 );
+
+app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => {
+  requireWasher(req);
+  const ok = deleteClient(req.params.id);
+  if (!ok) throw Object.assign(new Error("Клиент не найден"), { statusCode: 404 });
+  return { ok: true };
+});
 
 app.put<{ Params: { id: string }; Body: { clientId: string | null } }>(
   "/api/orders/:id/client",

@@ -99,9 +99,18 @@
   box-shadow: var(--shadow-focus);
 }
 
-.ui-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
+select.ui-input {
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size:
+    6px 6px,
+    6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
 }
 
 .ui-checkbox-row {

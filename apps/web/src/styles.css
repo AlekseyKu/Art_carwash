@@ -682,6 +682,147 @@ a.topbar-pill {
   margin-left: 0.15rem;
 }
 
+.client-search {
+  position: relative;
+  margin-left: 0.5rem;
+  min-width: 220px;
+  flex: 1;
+  max-width: 320px;
+}
+
+.client-search__input {
+  width: 100%;
+  min-height: 48px;
+}
+
+.client-search__dropdown {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #fff;
+  border: 1px solid var(--brand-silver-soft);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  max-height: 280px;
+  overflow: auto;
+}
+
+.client-search__hit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid var(--brand-silver-soft);
+}
+
+.client-search__hit:last-child {
+  border-bottom: none;
+}
+
+.client-search__hit:hover,
+.client-search__hit:focus {
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+.client-search__hit span {
+  color: var(--muted, #666);
+  font-size: 0.85rem;
+}
+
+.client-search__hint {
+  padding: 0.75rem;
+  color: var(--muted, #666);
+  font-size: 0.9rem;
+}
+
+.client-search__attached {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.client-search__clear {
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted, #666);
+}
+
+.clients-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.clients-toolbar {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.clients-search {
+  flex: 1;
+  min-width: 220px;
+}
+
+.clients-layout {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .clients-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.clients-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.clients-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: none;
+  border-bottom: 1px solid var(--brand-silver-soft);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.clients-row.active,
+.clients-row:hover {
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+.clients-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
 .class-info-list {
   list-style: none;
   margin: 0;
