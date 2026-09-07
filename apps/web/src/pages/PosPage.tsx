@@ -762,6 +762,9 @@ export function PosPage() {
           >
             {shift ? `Смена ${formatShiftDate(shift.openedAt)}` : "Смена не открыта"}
           </button>
+          <Link to="/calendar" className="topbar-pill">
+            Календарь
+          </Link>
           <Link to="/clients" className="topbar-pill">
             Клиенты
           </Link>

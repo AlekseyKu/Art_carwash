@@ -1,0 +1,120 @@
+.booking-step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.booking-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+}
+
+.booking-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.booking-choice {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.booking-choice--on {
+  border-color: var(--brand-primary);
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+
+.booking-choice__title {
+  font-weight: var(--weight-semibold);
+  font-size: var(--text-md);
+}
+
+.booking-choice__meta {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.booking-choice__badge {
+  font-size: var(--text-xs);
+  color: var(--brand-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.booking-nav {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.booking-nav .ui-btn {
+  flex: 1;
+}
+
+.booking-dates {
+  display: flex;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: var(--space-2);
+  -webkit-overflow-scrolling: touch;
+}
+
+.booking-date {
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.booking-date--on {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.booking-slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.booking-slot {
+  padding: var(--space-3) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.booking-slot--on {
+  border-color: var(--brand-primary);
+  background: transparent;
+  color: var(--brand-primary);
+}
+
+.booking-done__text {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
+}

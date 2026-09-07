@@ -6,6 +6,7 @@
 @import "./theme/onboarding.css";
 @import "./theme/price.css";
 @import "./theme/account.css";
+@import "./theme/booking.css";
 @import "./theme/pwa.css";
 
 * {

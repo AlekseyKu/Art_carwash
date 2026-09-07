@@ -86,38 +86,70 @@ type PriceItemRow = {
   name: string;
   priceKopecks: number | null;
   priceRub: string;
+  durationMinutes: number;
+  durationMin: string;
 };
 
 function priceDraftKey(classId: string, tabSlug: string) {
   return `${classId}:${tabSlug}`;
 }
 
+function defaultDurationForPriceTab(tabSlug: string) {
+  return tabSlug === "extra-services" ? 15 : 60;
+}
+
 function rowsToPricePayload(items: PriceItemRow[]) {
   return items.map((item) => {
     const trimmed = item.priceRub.trim().replace(",", ".");
+    const durationRaw = item.durationMin.trim().replace(",", ".");
+    const durationN = Number(durationRaw);
+    const durationMinutes =
+      durationRaw !== "" && Number.isFinite(durationN) && durationN > 0
+        ? Math.round(durationN)
+        : item.durationMinutes;
     if (trimmed === "") {
-      return { serviceId: item.serviceId, priceKopecks: null as number | null };
+      return {
+        serviceId: item.serviceId,
+        priceKopecks: null as number | null,
+        durationMinutes,
+      };
     }
     const n = Number(trimmed);
     return {
       serviceId: item.serviceId,
       priceKopecks: Number.isFinite(n) ? Math.round(n * 100) : null,
+      durationMinutes,
     };
   });
 }
 
 function mapPriceApiItems(
-  items: { serviceId: string; name: string; priceKopecks: number | null }[]
+  items: {
+    serviceId: string;
+    name: string;
+    priceKopecks: number | null;
+    durationMinutes?: number;
+  }[],
+  tabSlug: string
 ): PriceItemRow[] {
-  return items.map((item) => ({
-    serviceId: item.serviceId,
-    name: item.name,
-    priceKopecks: item.priceKopecks,
-    priceRub:
-      item.priceKopecks === null || item.priceKopecks === undefined
-        ? ""
-        : String(item.priceKopecks / 100),
-  }));
+  const fallback = defaultDurationForPriceTab(tabSlug);
+  return items.map((item) => {
+    const durationMinutes =
+      item.durationMinutes != null && item.durationMinutes > 0
+        ? item.durationMinutes
+        : fallback;
+    return {
+      serviceId: item.serviceId,
+      name: item.name,
+      priceKopecks: item.priceKopecks,
+      priceRub:
+        item.priceKopecks === null || item.priceKopecks === undefined
+          ? ""
+          : String(item.priceKopecks / 100),
+      durationMinutes,
+      durationMin: String(durationMinutes),
+    };
+  });
 }
 
 export function AdminPage() {
@@ -174,7 +206,7 @@ export function AdminPage() {
     name: "",
     description: "",
     priceRub: "",
-    sortOrder: "0",
+    sortOrder: "10",
     coefficientEnabled: false,
     coefficientStepRub: "50",
   };
@@ -240,7 +272,9 @@ export function AdminPage() {
 
   const itemsForActiveTab = useMemo(() => {
     if (!activeCatalogTab) return [];
-    return services.filter((s) => s.tabId === activeCatalogTab.id);
+    return services
+      .filter((s) => s.tabId === activeCatalogTab.id)
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, "ru"));
   }, [services, activeCatalogTab]);
 
   const activeVehicleClasses = useMemo(
@@ -339,7 +373,7 @@ export function AdminPage() {
   async function fetchPriceRows(classId: string, tabSlug: string) {
     if (!token) return [];
     const res = await adminApi.servicePrices(token, classId, tabSlug);
-    return mapPriceApiItems(res.items);
+    return mapPriceApiItems(res.items, tabSlug);
   }
 
   async function loadServicePrices(classId: string, tabSlug = priceTabSlug, force = false) {
@@ -360,6 +394,34 @@ export function AdminPage() {
     setPriceItems((rows) => {
       const next = rows.map((r) => (r.serviceId === serviceId ? { ...r, priceRub } : r));
       setPriceDrafts((prev) => ({ ...prev, [key]: next }));
+      return next;
+    });
+    setPriceDirtyKeys((prev) => ({ ...prev, [key]: true }));
+  }
+
+  function updateDurationMin(serviceId: string, durationMin: string) {
+    if (!priceClassId) return;
+    const key = priceDraftKey(priceClassId, priceTabSlug);
+    const n = Number(durationMin.trim().replace(",", "."));
+    const durationMinutes =
+      durationMin.trim() !== "" && Number.isFinite(n) && n > 0
+        ? Math.round(n)
+        : defaultDurationForPriceTab(priceTabSlug);
+    setPriceItems((rows) => {
+      const next = rows.map((r) =>
+        r.serviceId === serviceId ? { ...r, durationMin, durationMinutes } : r
+      );
+      setPriceDrafts((prev) => {
+        const updated: Record<string, PriceItemRow[]> = { ...prev, [key]: next };
+        // Время общее для услуги — синхронизируем по всем классам той же вкладки
+        for (const [draftKey, draftRows] of Object.entries(prev)) {
+          if (!draftKey.endsWith(`:${priceTabSlug}`) || draftKey === key) continue;
+          updated[draftKey] = draftRows.map((r) =>
+            r.serviceId === serviceId ? { ...r, durationMin, durationMinutes } : r
+          );
+        }
+        return updated;
+      });
       return next;
     });
     setPriceDirtyKeys((prev) => ({ ...prev, [key]: true }));
@@ -786,6 +848,7 @@ export function AdminPage() {
                   <th>Название</th>
                   {isClassPricedTab && <th>Описание</th>}
                   {!isClassPricedTab && <th>Цена</th>}
+                  <th>Порядок</th>
                   <th className="table-actions">Действия</th>
                 </tr>
               </thead>
@@ -795,6 +858,7 @@ export function AdminPage() {
                     <td>{s.name}</td>
                     {isClassPricedTab && <td className="muted">{s.description || "—"}</td>}
                     {!isClassPricedTab && <td>{formatRub(s.priceKopecks)}</td>}
+                    <td>{s.sortOrder}</td>
                     <td className="table-actions">
                       <div className="row table-actions-row">
                         <button
@@ -888,6 +952,14 @@ export function AdminPage() {
                   onChange={(priceRub) => setSvcForm((f) => ({ ...f, priceRub }))}
                 />
               )}
+              <TouchField
+                placeholder="Порядок"
+                title="Порядок отображения"
+                mode="numeric"
+                value={svcForm.sortOrder}
+                onChange={(sortOrder) => setSvcForm((f) => ({ ...f, sortOrder }))}
+                style={{ maxWidth: "7rem" }}
+              />
               {isClassPricedTab && (
                 <>
                   <label className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
@@ -932,6 +1004,10 @@ export function AdminPage() {
                   const coefficientStepKopecks = Number.isFinite(stepRub)
                     ? Math.round(stepRub * 100)
                     : 5000;
+                  const parsedOrder = Number(String(svcForm.sortOrder).replace(",", "."));
+                  const sortOrder = Number.isFinite(parsedOrder)
+                    ? Math.round(parsedOrder)
+                    : (existing?.sortOrder ?? 10);
                   void adminApi
                     .saveService(
                       token,
@@ -942,7 +1018,7 @@ export function AdminPage() {
                           : (existing?.description ?? ""),
                         priceKopecks,
                         active: editingServiceId ? editingServiceActive : true,
-                        sortOrder: Number(svcForm.sortOrder) || existing?.sortOrder || 0,
+                        sortOrder,
                         tabId: activeCatalogTab.id,
                         ...(isClassPricedTab
                           ? {
@@ -1090,8 +1166,9 @@ export function AdminPage() {
           <div className="panel stack">
             <h2 className="h2">Цены на услуги</h2>
             <p className="muted" style={{ marginTop: 0 }}>
-              Цены услуг и доп.услуг по классу авто. Пустое поле — позиция скрыта на кассе для
-              этого класса.
+              Цены услуг и доп.услуг по классу авто. Пустое поле цены — позиция скрыта на кассе
+              для этого класса. Колонка «Время» — длительность для записи (общая для всех классов):
+              по умолчанию 60 мин для услуг и 15 мин для доп.услуг.
             </p>
             {priceDirty && (
               <p className="muted" style={{ marginTop: 0 }}>
@@ -1135,6 +1212,7 @@ export function AdminPage() {
                     <tr>
                       <th>{priceTabSlug === "extra-services" ? "Доп.услуга" : "Услуга"}</th>
                       <th>Цена ₽</th>
+                      <th>Время, мин</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1148,6 +1226,15 @@ export function AdminPage() {
                             mode="numeric"
                             value={item.priceRub}
                             onChange={(priceRub) => updatePriceRub(item.serviceId, priceRub)}
+                          />
+                        </td>
+                        <td style={{ maxWidth: "8rem" }}>
+                          <TouchField
+                            placeholder={String(defaultDurationForPriceTab(priceTabSlug))}
+                            title={`Время: ${item.name}`}
+                            mode="numeric"
+                            value={item.durationMin}
+                            onChange={(durationMin) => updateDurationMin(item.serviceId, durationMin)}
                           />
                         </td>
                       </tr>

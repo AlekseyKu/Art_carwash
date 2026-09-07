@@ -174,6 +174,44 @@ export const apiClient = {
     return api<{ ok: boolean }>(`/api/customer/vehicles/${id}`, { method: "DELETE" });
   },
 
+  slots(params: {
+    date: string;
+    mainServiceId: string;
+    addonIds?: string[];
+  }) {
+    const q = new URLSearchParams({
+      date: params.date,
+      mainServiceId: params.mainServiceId,
+    });
+    if (params.addonIds?.length) q.set("addonIds", params.addonIds.join(","));
+    return api<{
+      date: string;
+      durationMinutes: number;
+      timezone: string;
+      slots: { startsAt: string; endsAt: string; time: string }[];
+    }>(`/api/customer/slots?${q}`);
+  },
+
+  listBookings() {
+    return api<{ bookings: BookingDto[] }>("/api/customer/bookings");
+  },
+
+  createBooking(body: {
+    vehicleId: string;
+    mainServiceId: string;
+    addonIds?: string[];
+    startsAt: string;
+  }) {
+    return api<BookingDto>("/api/customer/bookings", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+
+  cancelBooking(id: string) {
+    return api<BookingDto>(`/api/customer/bookings/${id}/cancel`, { method: "POST" });
+  },
+
   ownerLogin(password: string) {
     return api<{ ok: boolean; token: string }>("/api/owner/login", {
       method: "POST",
@@ -181,6 +219,29 @@ export const apiClient = {
       auth: false,
     });
   },
+};
+
+export type BookingDto = {
+  id: string;
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  vehicleId: string | null;
+  plateNumber: string | null;
+  classId: string | null;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  source: string;
+  totalKopecks: number;
+  items: {
+    id: string;
+    serviceId: string;
+    serviceName: string;
+    kind: string;
+    priceKopecks: number;
+    durationMinutes: number;
+  }[];
 };
 
 export function yandexRouteUrl(lat: number, lon: number): string {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { PencilSquareIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { apiClient, type Vehicle } from "../api";
+import { Link } from "react-router-dom";
+import { apiClient, type BookingDto, type Vehicle } from "../api";
 import { useAuth } from "../auth";
 import { PageHeader } from "../components/layout/PageHeader";
 import { Button, Card, Field, FormError, InfoRow, Input } from "../components/ui";
@@ -18,6 +19,37 @@ const emptyDraft = (classId = ""): VehicleDraft => ({
   isDefault: false,
 });
 
+function bookingStatusLabel(status: string) {
+  switch (status) {
+    case "booked":
+      return "Забронировано";
+    case "arrived":
+      return "На мойке";
+    case "in_service":
+      return "В работе";
+    case "completed":
+      return "Выполнено";
+    case "cancelled":
+      return "Отменено";
+    case "no_show":
+      return "Неявка";
+    default:
+      return status;
+  }
+}
+
+function formatBookingWhen(iso: string) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(iso));
+}
+
 export function CabinetPage() {
   const { customer, logout, updateProfile } = useAuth();
   const [name, setName] = useState(customer?.name ?? "");
@@ -27,11 +59,13 @@ export function CabinetPage() {
   const [profileError, setProfileError] = useState("");
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [bookings, setBookings] = useState<BookingDto[]>([]);
   const [classes, setClasses] = useState<
     { id: string; name: string; iconKey: string; slug: string }[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [bookingActionId, setBookingActionId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<VehicleDraft>(emptyDraft());
@@ -55,8 +89,13 @@ export function CabinetPage() {
     setLoading(true);
     setError("");
     try {
-      const [v, catalog] = await Promise.all([apiClient.listVehicles(), apiClient.catalog()]);
+      const [v, catalog, b] = await Promise.all([
+        apiClient.listVehicles(),
+        apiClient.catalog(),
+        apiClient.listBookings(),
+      ]);
       setVehicles(v.vehicles);
+      setBookings(b.bookings);
       setClasses(
         catalog.vehicleClasses
           .filter((c) => c.active)
@@ -176,9 +215,37 @@ export function CabinetPage() {
     }
   }
 
+  async function onCancelBooking(id: string) {
+    if (!window.confirm("Отменить эту запись?")) return;
+    setError("");
+    setBookingActionId(id);
+    try {
+      await apiClient.cancelBooking(id);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отменить");
+    } finally {
+      setBookingActionId(null);
+    }
+  }
+
+  const upcomingBookings = useMemo(() => {
+    const now = Date.now();
+    return bookings
+      .filter((b) => b.status === "booked" && new Date(b.startsAt).getTime() >= now - 60_000)
+      .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  }, [bookings]);
+
+  const pastBookings = useMemo(() => {
+    const upcomingIds = new Set(upcomingBookings.map((b) => b.id));
+    return bookings
+      .filter((b) => !upcomingIds.has(b.id))
+      .sort((a, b) => b.startsAt.localeCompare(a.startsAt));
+  }, [bookings, upcomingBookings]);
+
   return (
     <div>
-      <PageHeader title="Кабинет" subtitle="Профиль и гараж" />
+      <PageHeader title="Кабинет" subtitle="Профиль, гараж и записи" />
 
       <Card className="profile-card">
         {!nameEditing ? (
@@ -227,6 +294,8 @@ export function CabinetPage() {
         </div>
       </Card>
 
+      <FormError message={error} />
+
       <section className="garage-section">
         <div className="garage-section__head">
           <h2 className="ui-title-sm garage-section__title">Гараж</h2>
@@ -236,7 +305,6 @@ export function CabinetPage() {
         </div>
 
         {loading && <p className="price-loading">Загрузка…</p>}
-        <FormError message={error} />
 
         {!loading && !vehicles.length && (
           <Card className="garage-empty">
@@ -287,6 +355,77 @@ export function CabinetPage() {
             );
           })}
         </ul>
+      </section>
+
+      <section className="bookings-section">
+        <div className="garage-section__head">
+          <h2 className="ui-title-sm garage-section__title">Мои записи</h2>
+          <Link className="ui-btn ui-btn--secondary" to="/app/booking">
+            Записаться
+          </Link>
+        </div>
+
+        {!loading && !bookings.length && (
+          <Card className="garage-empty">
+            <p className="garage-empty__text">Пока нет записей. Запишитесь на мойку онлайн.</p>
+          </Card>
+        )}
+
+        {upcomingBookings.length > 0 && (
+          <>
+            <h3 className="bookings-subtitle">Предстоящие</h3>
+            <ul className="garage-list">
+              {upcomingBookings.map((b) => {
+                const main = b.items.find((i) => i.kind === "main") ?? b.items[0];
+                const addons = b.items.filter((i) => i.kind === "addon");
+                return (
+                  <li key={b.id}>
+                    <Card className="booking-card">
+                      <div className="booking-card__when">{formatBookingWhen(b.startsAt)}</div>
+                      <div className="booking-card__plate">{b.plateNumber ?? "Авто"}</div>
+                      <div className="booking-card__meta">
+                        {main?.serviceName ?? "Услуга"}
+                        {addons.length ? ` · +${addons.length}` : ""}
+                        {" · "}
+                        {bookingStatusLabel(b.status)}
+                      </div>
+                      <button
+                        type="button"
+                        className="booking-card__cancel"
+                        disabled={bookingActionId === b.id}
+                        onClick={() => void onCancelBooking(b.id)}
+                      >
+                        {bookingActionId === b.id ? "Отмена…" : "Отменить запись"}
+                      </button>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
+
+        {pastBookings.length > 0 && (
+          <>
+            <h3 className="bookings-subtitle">История</h3>
+            <ul className="garage-list">
+              {pastBookings.map((b) => {
+                const main = b.items.find((i) => i.kind === "main") ?? b.items[0];
+                return (
+                  <li key={b.id}>
+                    <Card className="booking-card booking-card--past">
+                      <div className="booking-card__when">{formatBookingWhen(b.startsAt)}</div>
+                      <div className="booking-card__plate">{b.plateNumber ?? "Авто"}</div>
+                      <div className="booking-card__meta">
+                        {main?.serviceName ?? "Услуга"} · {bookingStatusLabel(b.status)}
+                      </div>
+                    </Card>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
+        )}
       </section>
 
       {formOpen && (

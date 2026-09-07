@@ -176,6 +176,9 @@ export function migrate() {
       "ALTER TABLE services ADD COLUMN coefficient_step_kopecks INTEGER NOT NULL DEFAULT 5000"
     );
   }
+  if (!tableColumns("services").has("duration_minutes")) {
+    db.exec("ALTER TABLE services ADD COLUMN duration_minutes INTEGER");
+  }
 
   const orderCols = tableColumns("orders");
   if (!orderCols.has("shift_id")) {
@@ -225,6 +228,7 @@ export function migrate() {
 
   ensureDefaultCatalogTabs();
   ensureVehicleClassesAndPrices();
+  ensureServiceDurations();
 }
 
 export type VehicleClassRow = {
@@ -385,6 +389,38 @@ export function getCatalogTabBySlug(slug: string): { id: string; slug: string; n
   return row ?? null;
 }
 
+/** Длительность для записи: доп.услуги 15 мин, остальное (услуги) 60 мин. */
+export function defaultDurationMinutesForTabId(tabId: string | null | undefined): number {
+  const extras = getCatalogTabBySlug(TAB_SLUG_EXTRA_SERVICES);
+  if (extras && tabId === extras.id) return 15;
+  return 60;
+}
+
+export function resolveServiceDurationMinutes(
+  durationMinutes: number | null | undefined,
+  tabId: string | null | undefined
+): number {
+  if (durationMinutes != null && Number.isFinite(durationMinutes) && durationMinutes > 0) {
+    return Math.round(durationMinutes);
+  }
+  return defaultDurationMinutesForTabId(tabId);
+}
+
+/** Проставляет duration_minutes по умолчанию там, где ещё NULL. */
+export function ensureServiceDurations() {
+  const extrasId = getCatalogTabBySlug(TAB_SLUG_EXTRA_SERVICES)?.id;
+  if (extrasId) {
+    db.prepare(
+      `UPDATE services SET duration_minutes = 15
+       WHERE duration_minutes IS NULL AND tab_id = ?`
+    ).run(extrasId);
+  }
+  db.prepare(
+    `UPDATE services SET duration_minutes = 60
+     WHERE duration_minutes IS NULL`
+  ).run();
+}
+
 /** Гарантирует вкладки Услуги / Доп.услуги / Товары и привязку позиций. */
 export function ensureDefaultCatalogTabs() {
   function ensureTab(slug: string, name: string, sortOrder: number): string {
@@ -489,6 +525,7 @@ export function seedIfEmpty() {
   }
 
   ensureVehicleClassesAndPrices();
+  ensureServiceDurations();
 
   db.prepare(
     "INSERT INTO discounts (id, name, type, value, active) VALUES (?, ?, ?, ?, 1)"

@@ -1,4 +1,4 @@
-import { db, CLASS_PRICED_TAB_SLUGS, getSetting, listVehicleClasses } from "./db.js";
+import { db, CLASS_PRICED_TAB_SLUGS, getSetting, listVehicleClasses, resolveServiceDurationMinutes } from "./db.js";
 import { enqueueOutbox } from "./sync.js";
 
 const CLASS_PRICED = new Set<string>(CLASS_PRICED_TAB_SLUGS);
@@ -83,6 +83,7 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
     active: number;
     sort_order: number;
     tab_id: string | null;
+    duration_minutes?: number | null;
   }[];
 
   const servicePrices = (
@@ -118,7 +119,7 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
       active: !!s.active,
       sortOrder: s.sort_order,
       priceKopecks,
-      durationMinutes: null,
+      durationMinutes: resolveServiceDurationMinutes(s.duration_minutes, s.tab_id),
     };
   });
 

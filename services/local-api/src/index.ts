@@ -27,12 +27,14 @@ import {
 } from "./auth.js";
 import {
   db,
+  defaultDurationMinutesForTabId,
   getCatalogTabBySlug,
   getDefaultVehicleClass,
   getSetting,
   isClassPricedTabId,
   listVehicleClasses,
   migrate,
+  resolveServiceDurationMinutes,
   resolveServicePrice,
   seedIfEmpty,
   setSetting,
@@ -53,8 +55,17 @@ import {
   setOrderVehicleClass,
 } from "./orders.js";
 import { isOnline, providers } from "./payments.js";
-import { flushOutbox, startSyncLoop } from "./sync.js";
+import {
+  cancelLocalBooking,
+  createKassaBooking,
+  dayCalendarGrid,
+  getBooking,
+  initLocalBookingSchema,
+  markBookingArrived,
+} from "./bookings.js";
 import { enqueueCatalogSnapshot } from "./catalogSnapshot.js";
+import { enqueueOutbox, flushOutbox, startSyncLoop } from "./sync.js";
+import { mskDateString } from "./time.js";
 
 function afterCatalogChange() {
   enqueueCatalogSnapshot();
@@ -86,6 +97,7 @@ migrate();
 seedIfEmpty();
 ensureClientTables();
 seedDemoClient();
+initLocalBookingSchema();
 
 // Старые сессии с лимитом 12ч — бессрочные (выход только вручную)
 db.prepare(
@@ -170,6 +182,7 @@ function mapServiceRow(s: {
   tab_id: string | null;
   coefficient_enabled?: number | null;
   coefficient_step_kopecks?: number | null;
+  duration_minutes?: number | null;
 }) {
   return {
     id: s.id,
@@ -181,6 +194,7 @@ function mapServiceRow(s: {
     tabId: s.tab_id ?? "",
     coefficientEnabled: !!s.coefficient_enabled,
     coefficientStepKopecks: s.coefficient_step_kopecks ?? 5000,
+    durationMinutes: resolveServiceDurationMinutes(s.duration_minutes, s.tab_id),
   };
 }
 
@@ -355,6 +369,101 @@ app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => {
   if (!ok) throw Object.assign(new Error("Клиент не найден"), { statusCode: 404 });
   return { ok: true };
 });
+
+app.get<{ Querystring: { date?: string } }>("/api/bookings", async (req) => {
+  requireWasher(req);
+  const date = (req.query.date ?? mskDateString()).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date=YYYY-MM-DD");
+  return dayCalendarGrid(date);
+});
+
+app.get<{ Params: { id: string } }>("/api/bookings/:id", async (req) => {
+  requireWasher(req);
+  const b = getBooking(req.params.id);
+  if (!b) throw Object.assign(new Error("Запись не найдена"), { statusCode: 404 });
+  return b;
+});
+
+app.post<{
+  Body: {
+    startsAt: string;
+    durationMinutes?: number;
+    customerName?: string | null;
+    customerPhone?: string | null;
+    plateNumber?: string | null;
+    classId?: string | null;
+    items: {
+      serviceId: string;
+      serviceName: string;
+      kind: "main" | "addon";
+      priceKopecks: number;
+      durationMinutes: number;
+    }[];
+  };
+}>("/api/bookings", async (req) => {
+  requireWasher(req);
+  const body = req.body ?? ({} as typeof req.body);
+  if (!body.startsAt) throw new Error("startsAt обязателен");
+  const items = body.items ?? [];
+  if (!items.length) throw new Error("Нужна хотя бы одна услуга");
+  const booking = createKassaBooking({
+    startsAt: body.startsAt,
+    durationMinutes: body.durationMinutes ?? 0,
+    customerName: body.customerName,
+    customerPhone: body.customerPhone,
+    plateNumber: body.plateNumber,
+    classId: body.classId,
+    items,
+  });
+  enqueueOutbox("booking.upsert", booking);
+  return booking;
+});
+
+app.post<{ Params: { id: string } }>("/api/bookings/:id/cancel", async (req) => {
+  requireWasher(req);
+  const booking = cancelLocalBooking(req.params.id);
+  enqueueOutbox("booking.upsert", booking);
+  return booking;
+});
+
+app.post<{
+  Params: { id: string };
+  Body: { postId?: number };
+}>("/api/bookings/:id/arrive", async (req) => {
+  const s = requireWasher(req);
+  const booking = getBooking(req.params.id);
+  if (!booking) throw Object.assign(new Error("Запись не найдена"), { statusCode: 404 });
+  if (!isOccupyingOrBooked(booking.status)) {
+    throw new Error("Запись нельзя отметить прибытием");
+  }
+  const postId = Number(req.body?.postId ?? 1);
+  if (postId !== 1 && postId !== 2) throw new Error("Неверный пост");
+  const draft = getOrCreateDraft(postId, s.washer_id!);
+  if (booking.classId) {
+    try {
+      setOrderVehicleClass(draft.id, booking.classId);
+    } catch {
+      /* класс мог исчезнуть */
+    }
+  }
+  setOrderItems(
+    draft.id,
+    booking.items.map((it) => ({
+      serviceId: it.serviceId,
+      name: it.serviceName,
+      priceKopecks: it.priceKopecks,
+      qty: 1,
+    })),
+    null
+  );
+  const updated = markBookingArrived(booking.id, draft.id);
+  enqueueOutbox("booking.status", updated);
+  return { booking: updated, order: getOrder(draft.id) };
+});
+
+function isOccupyingOrBooked(status: string) {
+  return status === "booked" || status === "arrived" || status === "in_service";
+}
 
 app.put<{ Params: { id: string }; Body: { clientId: string | null } }>(
   "/api/orders/:id/client",
@@ -601,6 +710,7 @@ app.post<{
     tabId?: string;
     coefficientEnabled?: boolean;
     coefficientStepKopecks?: number;
+    durationMinutes?: number;
   };
 }>("/api/admin/services", async (req) => {
   requireAdmin(req);
@@ -611,11 +721,15 @@ app.post<{
   const priceKopecks = req.body.priceKopecks ?? 0;
   const description = String(req.body.description ?? "").trim();
   const step = Math.max(100, Math.round(req.body.coefficientStepKopecks ?? 5000));
+  const durationMinutes =
+    req.body.durationMinutes != null && Number(req.body.durationMinutes) > 0
+      ? Math.round(Number(req.body.durationMinutes))
+      : defaultDurationMinutesForTabId(tabId);
   db.prepare(
     `INSERT INTO services (
       id, name, description, price_kopecks, active, sort_order, tab_id,
-      coefficient_enabled, coefficient_step_kopecks
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      coefficient_enabled, coefficient_step_kopecks, duration_minutes
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     req.body.name,
@@ -625,7 +739,8 @@ app.post<{
     req.body.sortOrder ?? 0,
     tabId,
     req.body.coefficientEnabled ? 1 : 0,
-    step
+    step,
+    durationMinutes
   );
   afterCatalogChange();
   return { id };
@@ -642,12 +757,14 @@ app.put<{
     tabId?: string;
     coefficientEnabled?: boolean;
     coefficientStepKopecks?: number;
+    durationMinutes?: number;
   };
 }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
   const existing = db
     .prepare(
-      "SELECT tab_id, description, coefficient_enabled, coefficient_step_kopecks FROM services WHERE id = ?"
+      `SELECT tab_id, description, coefficient_enabled, coefficient_step_kopecks, duration_minutes
+       FROM services WHERE id = ?`
     )
     .get(req.params.id) as
     | {
@@ -655,6 +772,7 @@ app.put<{
         description: string | null;
         coefficient_enabled: number;
         coefficient_step_kopecks: number;
+        duration_minutes: number | null;
       }
     | undefined;
   const tabId =
@@ -676,9 +794,14 @@ app.put<{
     req.body.coefficientStepKopecks !== undefined
       ? Math.max(100, Math.round(req.body.coefficientStepKopecks))
       : (existing?.coefficient_step_kopecks ?? 5000);
+  const durationMinutes =
+    req.body.durationMinutes != null && Number(req.body.durationMinutes) > 0
+      ? Math.round(Number(req.body.durationMinutes))
+      : resolveServiceDurationMinutes(existing?.duration_minutes, tabId);
   db.prepare(
     `UPDATE services SET name = ?, description = ?, price_kopecks = ?, active = ?, sort_order = ?,
-     tab_id = ?, coefficient_enabled = ?, coefficient_step_kopecks = ? WHERE id = ?`
+     tab_id = ?, coefficient_enabled = ?, coefficient_step_kopecks = ?, duration_minutes = ?
+     WHERE id = ?`
   ).run(
     req.body.name,
     description,
@@ -688,6 +811,7 @@ app.put<{
     tabId,
     coeffEnabled,
     step,
+    durationMinutes,
     req.params.id
   );
   afterCatalogChange();
@@ -818,9 +942,15 @@ app.get<{ Querystring: { classId?: string; tabSlug?: string } }>(
 
     const services = db
       .prepare(
-        "SELECT id, name FROM services WHERE tab_id = ? ORDER BY sort_order, name"
+        `SELECT id, name, tab_id, duration_minutes FROM services
+         WHERE tab_id = ? ORDER BY sort_order, name`
       )
-      .all(catalogTab.id) as { id: string; name: string }[];
+      .all(catalogTab.id) as {
+      id: string;
+      name: string;
+      tab_id: string | null;
+      duration_minutes: number | null;
+    }[];
 
     const priceStmt = db.prepare(
       "SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?"
@@ -835,6 +965,7 @@ app.get<{ Querystring: { classId?: string; tabSlug?: string } }>(
           serviceId: s.id,
           name: s.name,
           priceKopecks: row ? row.price_kopecks : null,
+          durationMinutes: resolveServiceDurationMinutes(s.duration_minutes, s.tab_id),
         };
       }),
     };
@@ -844,7 +975,7 @@ app.get<{ Querystring: { classId?: string; tabSlug?: string } }>(
 app.put<{
   Body: {
     classId: string;
-    items: { serviceId: string; priceKopecks: number | null }[];
+    items: { serviceId: string; priceKopecks: number | null; durationMinutes?: number }[];
   };
 }>("/api/admin/service-prices", async (req) => {
   requireAdmin(req);
@@ -862,12 +993,25 @@ app.put<{
   const del = db.prepare(
     "DELETE FROM service_prices WHERE service_id = ? AND class_id = ?"
   );
+  const updateDuration = db.prepare(
+    "UPDATE services SET duration_minutes = ? WHERE id = ?"
+  );
+  const getTab = db.prepare("SELECT tab_id FROM services WHERE id = ?");
 
   for (const item of req.body.items ?? []) {
     if (item.priceKopecks === null || item.priceKopecks === undefined) {
       del.run(item.serviceId, classId);
     } else {
       upsert.run(item.serviceId, classId, item.priceKopecks);
+    }
+    if (item.durationMinutes != null) {
+      const svc = getTab.get(item.serviceId) as { tab_id: string | null } | undefined;
+      const minutes = Math.round(Number(item.durationMinutes));
+      if (Number.isFinite(minutes) && minutes > 0) {
+        updateDuration.run(minutes, item.serviceId);
+      } else if (svc) {
+        updateDuration.run(defaultDurationMinutesForTabId(svc.tab_id), item.serviceId);
+      }
     }
   }
   afterCatalogChange();

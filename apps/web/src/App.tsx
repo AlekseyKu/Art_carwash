@@ -1,6 +1,7 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AdminPage } from "./pages/AdminPage";
+import { CalendarPage } from "./pages/CalendarPage";
 import { ClientsPage } from "./pages/ClientsPage";
 import { PosPage } from "./pages/PosPage";
 import { ReportsPage } from "./pages/ReportsPage";
@@ -15,6 +16,14 @@ export function App() {
             element={
               <ErrorBoundary label="Касса">
                 <PosPage />
+              </ErrorBoundary>
+            }
+          />
+          <Route
+            path="/calendar"
+            element={
+              <ErrorBoundary label="Календарь">
+                <CalendarPage />
               </ErrorBoundary>
             }
           />

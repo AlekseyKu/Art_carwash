@@ -107,6 +107,68 @@
   margin-top: var(--space-6);
 }
 
+.bookings-section {
+  margin-top: var(--space-6);
+}
+
+.bookings-subtitle {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--muted);
+}
+
+.bookings-subtitle + .garage-list {
+  margin-bottom: var(--space-4);
+}
+
+.booking-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.booking-card--past {
+  opacity: 0.85;
+}
+
+.booking-card__when {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--ink);
+}
+
+.booking-card__plate {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+.booking-card__meta {
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.booking-card__cancel {
+  align-self: flex-start;
+  margin-top: var(--space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--danger);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.booking-card__cancel:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .garage-section__head {
   display: flex;
   align-items: center;

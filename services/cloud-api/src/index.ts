@@ -12,6 +12,12 @@ import {
   saveCatalogSnapshot,
 } from "./catalog.js";
 import { initCustomerSchema, registerCustomerRoutes } from "./customer.js";
+import {
+  initBookingSchema,
+  pullStationOutbox,
+  registerBookingRoutes,
+  upsertBookingFromPayload,
+} from "./bookings.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -69,6 +75,7 @@ db.exec(`
 
 initCatalogSchema(db);
 initCustomerSchema(db);
+initBookingSchema(db);
 
 const ownerCount = db.prepare("SELECT COUNT(*) as c FROM owners").get() as { c: number };
 if (ownerCount.c === 0) {
@@ -86,6 +93,7 @@ const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });
 
 registerCustomerRoutes(app, db);
+registerBookingRoutes(app, db);
 
 function bearer(req: { headers: { authorization?: string } }) {
   const h = req.headers.authorization;
@@ -144,6 +152,10 @@ app.post<{
         saveCatalogSnapshot(db, ev.payload as CatalogSnapshot);
         continue;
       }
+      if (ev.type === "booking.upsert" || ev.type === "booking.status") {
+        upsertBookingFromPayload(db, (ev.payload ?? {}) as Record<string, unknown>);
+        continue;
+      }
       const p = ev.payload as {
         id: string;
         number: number;
@@ -179,7 +191,9 @@ app.post<{
     db.exec("ROLLBACK");
     throw e;
   }
-  return { ok: true, received: req.body.events?.length ?? 0 };
+
+  const pull = pullStationOutbox(db, 50);
+  return { ok: true, received: req.body.events?.length ?? 0, events: pull };
 });
 
 app.post<{ Body: { password: string } }>("/api/owner/login", async (req) => {

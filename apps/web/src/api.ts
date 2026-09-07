@@ -120,6 +120,53 @@ export const api = {
       discounts: { id: string; name: string; type: string; value: number }[];
       staffWashers: StaffWasherDto[];
     }>(`/api/catalog${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`),
+  bookingsDay: (token: string, date: string) =>
+    request<{
+      date: string;
+      timezone: string;
+      today: string;
+      slots: {
+        time: string;
+        startsAt: string;
+        booking: BookingDto | null;
+      }[];
+      bookings: BookingDto[];
+    }>(`/api/bookings?date=${encodeURIComponent(date)}`, { token }),
+  cancelBooking: (token: string, id: string) =>
+    request<BookingDto>(`/api/bookings/${id}/cancel`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({}),
+    }),
+  arriveBooking: (token: string, id: string, postId = 1) =>
+    request<{ booking: BookingDto; order: OrderDto }>(`/api/bookings/${id}/arrive`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ postId }),
+    }),
+  createBooking: (
+    token: string,
+    body: {
+      startsAt: string;
+      durationMinutes?: number;
+      customerName?: string | null;
+      customerPhone?: string | null;
+      plateNumber?: string | null;
+      classId?: string | null;
+      items: {
+        serviceId: string;
+        serviceName: string;
+        kind: "main" | "addon";
+        priceKopecks: number;
+        durationMinutes: number;
+      }[];
+    }
+  ) =>
+    request<BookingDto>("/api/bookings", {
+      method: "POST",
+      token,
+      body: JSON.stringify(body),
+    }),
   draft: (postId: number, token: string) =>
     request<OrderDto>(`/api/orders/draft?postId=${postId}`, { token }),
   recentOrders: (token: string, limit = 5) =>
@@ -282,6 +329,31 @@ export type ClientDto = {
   lastVisitAt: string | null;
 };
 
+export type BookingDto = {
+  id: string;
+  customerId: string | null;
+  customerName: string | null;
+  customerPhone: string | null;
+  vehicleId: string | null;
+  plateNumber: string | null;
+  classId: string | null;
+  postId: number;
+  startsAt: string;
+  endsAt: string;
+  status: string;
+  source: string;
+  totalKopecks: number;
+  localOrderId: string | null;
+  items: {
+    id: string;
+    serviceId: string;
+    serviceName: string;
+    kind: string;
+    priceKopecks: number;
+    durationMinutes: number;
+  }[];
+};
+
 export type AnprEventDto = {
   id: string;
   plate: string;
@@ -362,6 +434,7 @@ export type CatalogItemDto = {
   tabId: string;
   coefficientEnabled?: boolean;
   coefficientStepKopecks?: number;
+  durationMinutes?: number;
 };
 
 export type StaffWasherDto = {
@@ -472,12 +545,24 @@ export const adminApi = {
     return request<{
       classId: string;
       tabSlug?: string;
-      items: { serviceId: string; name: string; priceKopecks: number | null }[];
+      items: {
+        serviceId: string;
+        name: string;
+        priceKopecks: number | null;
+        durationMinutes?: number;
+      }[];
     }>(`/api/admin/service-prices${q ? `?${q}` : ""}`, { token });
   },
   saveServicePrices: (
     token: string,
-    body: { classId: string; items: { serviceId: string; priceKopecks: number | null }[] }
+    body: {
+      classId: string;
+      items: {
+        serviceId: string;
+        priceKopecks: number | null;
+        durationMinutes?: number;
+      }[];
+    }
   ) =>
     request<{ ok: boolean }>("/api/admin/service-prices", {
       method: "PUT",
