@@ -10,14 +10,25 @@
 
 ### Вариант A — portable `.exe` (Electron)
 
+**Перед каждой сборкой кассы обязательно поднимите версию** в `apps/desktop/package.json` (`version`).  
+Имя exe берётся из неё (`ArtCarwash-POS-${version}-portable.exe`). Повторная сборка с той же версией путает установку и обновления — **не забывать bump** (patch `0.3.4` → `0.3.5` при любом релизе кассы).
+
+Чеклист релиза кассы:
+
+1. Поднять `apps/desktop/package.json` → `version` (semver).
+2. `pnpm dist:pos` — локальный portable exe.
+3. Либо `pnpm release:pos` — exe + `art-pos-update.zip` в GitHub Release (`pos-vX.Y.Z`).
+4. Закоммитить bump версии вместе с изменениями кассы.
+
 На машине сборки (Windows x64, Node.js ≥ 20, pnpm):
 
 ```bash
 pnpm install
+# сначала version в apps/desktop/package.json!
 pnpm dist:pos
 ```
 
-Артефакт: `apps/desktop/release/ArtCarwash-POS-0.1.0-portable.exe`
+Артефакт: `apps/desktop/release/ArtCarwash-POS-<version>-portable.exe`
 
 На кассовом ПК:
 1. Установите [Node.js **22+** x64](https://nodejs.org/) (нужен `node:sqlite`; после установки **перезагрузите ПК**).

@@ -17,4 +17,5 @@ coverage
 apps/desktop/resources
 apps/desktop/release
 apps/desktop/release-out
+apps/desktop/release-*
 *.tsbuildinfo
