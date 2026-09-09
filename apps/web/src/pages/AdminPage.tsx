@@ -723,6 +723,9 @@ export function AdminPage() {
           <Link to="/" className="topbar-pill">
             Касса
           </Link>
+          <Link to="/calendar" className="topbar-pill">
+            Календарь
+          </Link>
           <button
             type="button"
             className="topbar-pill"

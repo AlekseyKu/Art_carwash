@@ -11,7 +11,11 @@ import {
   initCatalogSchema,
   saveCatalogSnapshot,
 } from "./catalog.js";
-import { initCustomerSchema, registerCustomerRoutes } from "./customer.js";
+import {
+  enqueueAllCustomerUpserts,
+  initCustomerSchema,
+  registerCustomerRoutes,
+} from "./customer.js";
 import {
   initBookingSchema,
   pullStationOutbox,
@@ -76,6 +80,26 @@ db.exec(`
 initCatalogSchema(db);
 initCustomerSchema(db);
 initBookingSchema(db);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS cloud_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+`);
+
+{
+  const backfillKey = "customer_upsert_backfill_v1";
+  const done = db.prepare("SELECT value FROM cloud_meta WHERE key = ?").get(backfillKey);
+  if (!done) {
+    const n = enqueueAllCustomerUpserts(db);
+    db.prepare("INSERT INTO cloud_meta (key, value) VALUES (?, ?)").run(
+      backfillKey,
+      new Date().toISOString()
+    );
+    console.log(`[cloud] backfill customer.upsert → station: ${n}`);
+  }
+}
 
 const ownerCount = db.prepare("SELECT COUNT(*) as c FROM owners").get() as { c: number };
 if (ownerCount.c === 0) {

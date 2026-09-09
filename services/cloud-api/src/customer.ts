@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import type { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import type { DatabaseSync } from "node:sqlite";
+import { enqueueStationOutbox } from "./bookings.js";
 import { getCatalogSnapshot } from "./catalog.js";
 import { formatPhoneDisplay, normalizePhone } from "./phone.js";
 import { parseRfPlate } from "./plate.js";
@@ -117,6 +118,42 @@ function listVehicles(db: DatabaseSync, customerId: string) {
   return rows.map(mapVehicle);
 }
 
+/** Снимок клиента для кассы (customer.upsert). */
+export function buildCustomerUpsertPayload(db: DatabaseSync, customerId: string) {
+  const row = db
+    .prepare("SELECT id, phone, name, updated_at FROM customer_accounts WHERE id = ?")
+    .get(customerId) as
+    | { id: string; phone: string; name: string | null; updated_at: string }
+    | undefined;
+  if (!row) return null;
+  const vehicles = listVehicles(db, customerId);
+  return {
+    id: row.id,
+    phone: row.phone,
+    name: row.name,
+    updatedAt: row.updated_at,
+    vehicles: vehicles.map((v) => ({
+      id: v.id,
+      plateNumber: v.plateNumber,
+      classId: v.classId,
+      nickname: v.nickname,
+      isDefault: v.isDefault,
+    })),
+  };
+}
+
+export function enqueueCustomerUpsert(db: DatabaseSync, customerId: string) {
+  const payload = buildCustomerUpsertPayload(db, customerId);
+  if (!payload) return;
+  enqueueStationOutbox(db, "customer.upsert", payload);
+}
+
+export function enqueueAllCustomerUpserts(db: DatabaseSync) {
+  const ids = db.prepare("SELECT id FROM customer_accounts").all() as { id: string }[];
+  for (const row of ids) enqueueCustomerUpsert(db, row.id);
+  return ids.length;
+}
+
 function getVehicle(db: DatabaseSync, customerId: string, id: string) {
   return db
     .prepare("SELECT * FROM vehicles WHERE id = ? AND customer_id = ?")
@@ -184,6 +221,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
     ).run(id, phone, bcrypt.hashSync(password, 10), now, version, now, now);
 
     const session = createSession(db, id);
+    enqueueCustomerUpsert(db, id);
     return {
       ok: true,
       token: session.token,
@@ -248,6 +286,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
       now,
       c.customerId
     );
+    enqueueCustomerUpsert(db, c.customerId);
     return {
       id: c.customerId,
       phone: c.phone,
@@ -310,6 +349,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, c.customerId, plate, classId, nickname, makeDefault ? 1 : 0, now, now);
 
+    enqueueCustomerUpsert(db, c.customerId);
     return mapVehicle(getVehicle(db, c.customerId, id)!);
   });
 
@@ -371,6 +411,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
     ).run(plate, classId, nickname, makeDefault ? 1 : 0, now, row.id, c.customerId);
 
     ensureOneDefault(db, c.customerId);
+    enqueueCustomerUpsert(db, c.customerId);
     return mapVehicle(getVehicle(db, c.customerId, row.id)!);
   });
 
@@ -383,6 +424,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
       c.customerId
     );
     ensureOneDefault(db, c.customerId);
+    enqueueCustomerUpsert(db, c.customerId);
     return { ok: true };
   });
 }

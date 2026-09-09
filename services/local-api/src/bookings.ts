@@ -265,6 +265,7 @@ function assertSlotFree(startsAt: string, endsAt: string, excludeId?: string) {
 export function createKassaBooking(input: {
   startsAt: string;
   durationMinutes: number;
+  customerId?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
   plateNumber?: string | null;
@@ -290,7 +291,7 @@ export function createKassaBooking(input: {
   const totalKopecks = input.items.reduce((s, i) => s + (i.priceKopecks || 0), 0);
   const payload: BookingPayload = {
     id,
-    customerId: null,
+    customerId: input.customerId ?? null,
     customerName: input.customerName ?? null,
     customerPhone: input.customerPhone ?? null,
     vehicleId: null,

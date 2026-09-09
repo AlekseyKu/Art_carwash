@@ -132,6 +132,61 @@ export function findClientById(id: string): ClientDto | null {
   return row ? mapClient(row) : null;
 }
 
+function findClientRowByPhone(phone: string): { id: string } | undefined {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return undefined;
+  const last10 = digits.slice(-10);
+  return db
+    .prepare(
+      `SELECT id FROM clients
+       WHERE replace(replace(replace(coalesce(phone,''),'+',''),' ',''),'-','') LIKE ?`
+    )
+    .get(`%${last10}`) as { id: string } | undefined;
+}
+
+/** Применить customer.upsert из cloud (телефон, имя, номер по умолчанию). */
+export function upsertClientFromCloud(payload: {
+  id: string;
+  phone: string;
+  name: string | null;
+  vehicles?: { plateNumber: string; isDefault?: boolean }[];
+}): ClientDto {
+  const now = new Date().toISOString();
+  const vehicles = payload.vehicles ?? [];
+  const preferred = vehicles.find((v) => v.isDefault) ?? vehicles[0];
+  const plate = preferred?.plateNumber ? normalizePlate(preferred.plateNumber) : null;
+  const phone = payload.phone || null;
+  const name = payload.name;
+
+  const apply = (id: string) => {
+    const existing = findClientById(id)!;
+    db.prepare(
+      `UPDATE clients SET phone = ?, plate_number = ?, name = ?, updated_at = ? WHERE id = ?`
+    ).run(phone, plate ?? existing.plateNumber, name, now, id);
+    return findClientById(id)!;
+  };
+
+  if (findClientById(payload.id)) return apply(payload.id);
+
+  if (phone) {
+    const byPhone = findClientRowByPhone(phone);
+    if (byPhone) return apply(byPhone.id);
+  }
+
+  if (plate) {
+    const byPlate = findClientByPlate(plate);
+    if (byPlate) return apply(byPlate.id);
+  }
+
+  db.prepare(
+    `INSERT INTO clients (id, phone, plate_number, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(payload.id, phone, plate, name, now, now);
+  db.prepare(
+    `INSERT INTO loyalty_accounts (client_id, points, tier, personal_discount_percent) VALUES (?, 0, 'standard', 0)`
+  ).run(payload.id);
+  return findClientById(payload.id)!;
+}
+
 /** Поиск по телефону или госномеру (частичное совпадение). */
 export function searchClients(queryRaw: string, limit = 20): ClientDto[] {
   const q = queryRaw.trim();

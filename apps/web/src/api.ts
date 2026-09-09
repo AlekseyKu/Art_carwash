@@ -149,6 +149,7 @@ export const api = {
     body: {
       startsAt: string;
       durationMinutes?: number;
+      customerId?: string | null;
       customerName?: string | null;
       customerPhone?: string | null;
       plateNumber?: string | null;

@@ -388,6 +388,7 @@ app.post<{
   Body: {
     startsAt: string;
     durationMinutes?: number;
+    customerId?: string | null;
     customerName?: string | null;
     customerPhone?: string | null;
     plateNumber?: string | null;
@@ -406,9 +407,12 @@ app.post<{
   if (!body.startsAt) throw new Error("startsAt обязателен");
   const items = body.items ?? [];
   if (!items.length) throw new Error("Нужна хотя бы одна услуга");
+  const mains = items.filter((i) => i.kind === "main");
+  if (mains.length !== 1) throw new Error("Нужна ровно одна основная услуга");
   const booking = createKassaBooking({
     startsAt: body.startsAt,
     durationMinutes: body.durationMinutes ?? 0,
+    customerId: body.customerId,
     customerName: body.customerName,
     customerPhone: body.customerPhone,
     plateNumber: body.plateNumber,

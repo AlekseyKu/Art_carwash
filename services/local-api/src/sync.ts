@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { upsertLocalBooking, type BookingPayload } from "./bookings.js";
+import { upsertClientFromCloud } from "./clients.js";
 import { db, getSetting } from "./db.js";
 
 export function enqueueOutbox(type: string, payload: unknown) {
@@ -14,6 +15,14 @@ function applyPullEvents(
   for (const ev of events) {
     if (ev.type === "booking.upsert" || ev.type === "booking.status") {
       upsertLocalBooking(ev.payload as BookingPayload);
+    } else if (ev.type === "customer.upsert") {
+      const p = ev.payload as {
+        id: string;
+        phone: string;
+        name: string | null;
+        vehicles?: { plateNumber: string; isDefault?: boolean }[];
+      };
+      if (p?.id && p.phone) upsertClientFromCloud(p);
     }
   }
 }

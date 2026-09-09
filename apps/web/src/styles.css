@@ -1493,6 +1493,12 @@ input.touch-field-input {
   outline-offset: -2px;
 }
 
+.calendar-cell--draft {
+  outline: 2px dashed var(--brand-primary);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--brand-primary) 6%, white);
+}
+
 .calendar-cell--cont {
   background: color-mix(in srgb, var(--brand-primary) 8%, white);
   cursor: default;
@@ -1514,6 +1520,47 @@ input.touch-field-input {
 .calendar-detail ul {
   margin: 0.5rem 0 1rem;
   padding-left: 1.1rem;
+}
+
+.calendar-create-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+
+.calendar-client-hits {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.calendar-service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.calendar-service-chip {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--brand-silver-soft);
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.calendar-service-chip.active {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
 }
 
 .row.gap {
