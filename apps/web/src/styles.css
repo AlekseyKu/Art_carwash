@@ -1522,6 +1522,37 @@ input.touch-field-input {
   padding-left: 1.1rem;
 }
 
+.calendar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
+}
+
+.calendar-overlay__backdrop {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: rgba(20, 22, 26, 0.45);
+  cursor: pointer;
+}
+
+.calendar-overlay__sheet {
+  position: relative;
+  z-index: 1;
+  width: min(40rem, 100%);
+  max-height: min(85vh, 52rem);
+  overflow: auto;
+  margin: 0;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
+}
+
 .calendar-create-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
