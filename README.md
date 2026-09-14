@@ -21,6 +21,21 @@ pnpm dev
 
 Только мойка (без облака): `pnpm dev:local`
 
+### Docker (полный локальный стенд)
+
+```bash
+copy deploy\.env.local.example deploy\.env.local
+pnpm docker:up
+```
+
+| URL | Назначение |
+|-----|------------|
+| http://localhost:8080 | PWA (+ `/api` → cloud) |
+| http://localhost:3001 | Касса (web + local-api) |
+
+Логи: `pnpm docker:logs` · стоп: `pnpm docker:down`  
+Вход кассы: мойщик `1111` · админ `9999` · owner (отчёты/cloud): пароль из `.env.local` (`ART_OWNER_PASSWORD`).
+
 ### Сенсорная касса (Windows)
 
 | Команда | Что делает |

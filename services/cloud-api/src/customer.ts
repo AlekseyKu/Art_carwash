@@ -297,7 +297,13 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
 
   app.get("/api/customer/catalog", async (req) => {
     requireCustomer(db, req);
-    return getCatalogSnapshot(db);
+    const snap = getCatalogSnapshot(db);
+    return {
+      ...snap,
+      services: (snap.services ?? []).filter(
+        (s) => s.active !== false && s.visibleInPwa !== false
+      ),
+    };
   });
 
   app.get("/api/customer/vehicles", async (req) => {

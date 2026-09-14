@@ -37,6 +37,7 @@ export interface CatalogSnapshot {
     sortOrder: number;
     priceKopecks: number | null;
     durationMinutes: number | null;
+    visibleInPwa: boolean;
   }[];
   vehicleClasses: {
     id: string;
@@ -84,6 +85,7 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
     sort_order: number;
     tab_id: string | null;
     duration_minutes?: number | null;
+    visible_in_pwa?: number | null;
   }[];
 
   const servicePrices = (
@@ -120,6 +122,7 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
       sortOrder: s.sort_order,
       priceKopecks,
       durationMinutes: resolveServiceDurationMinutes(s.duration_minutes, s.tab_id),
+      visibleInPwa: s.visible_in_pwa == null ? true : !!s.visible_in_pwa,
     };
   });
 

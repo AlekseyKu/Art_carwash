@@ -37,7 +37,7 @@ type Props = {
 
 export function ShiftReportView({ report, title }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
-  const { shift, totalKopecks, orderCount, byPaymentMethod, orders } = report;
+  const { shift, totalKopecks, tipsKopecks = 0, orderCount, byPaymentMethod, orders } = report;
 
   return (
     <div className="stack shift-report">
@@ -54,7 +54,13 @@ export function ShiftReportView({ report, title }: Props) {
         {shift.closedByName ? ` · закрыл: ${shift.closedByName}` : ""}
       </p>
       <p style={{ margin: 0 }}>
-        Выручка <strong>{formatRub(totalKopecks)}</strong> · чеков {orderCount}
+        Выручка <strong>{formatRub(totalKopecks)}</strong>
+        {tipsKopecks > 0 ? (
+          <>
+            {" · "}чаевые <strong>{formatRub(tipsKopecks)}</strong>
+          </>
+        ) : null}
+        {" · "}чеков {orderCount}
       </p>
       {byPaymentMethod.length > 0 && (
         <ul style={{ margin: 0, paddingLeft: "1.1rem" }}>
@@ -91,6 +97,11 @@ export function ShiftReportView({ report, title }: Props) {
                   </span>
                   <span>
                     {formatRub(o.totalKopecks)}
+                    {(o.tipsKopecks ?? 0) > 0 ? (
+                      <span className="muted" style={{ marginLeft: "0.35rem" }}>
+                        +{formatRub(o.tipsKopecks ?? 0)}
+                      </span>
+                    ) : null}
                     <span className="muted" style={{ marginLeft: "0.5rem" }}>
                       {expanded ? "▲" : "▼"}
                     </span>
@@ -112,6 +123,11 @@ export function ShiftReportView({ report, title }: Props) {
                     {o.discountKopecks > 0 && (
                       <p className="muted" style={{ margin: "0.35rem 0 0" }}>
                         Скидка −{formatRub(o.discountKopecks)}
+                      </p>
+                    )}
+                    {(o.tipsKopecks ?? 0) > 0 && (
+                      <p className="muted" style={{ margin: "0.35rem 0 0" }}>
+                        Чаевые {formatRub(o.tipsKopecks ?? 0)}
                       </p>
                     )}
                   </div>

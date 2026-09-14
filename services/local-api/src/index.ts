@@ -52,6 +52,7 @@ import {
   markAwaitingPayment,
   markPaid,
   setOrderItems,
+  setOrderTips,
   setOrderVehicleClass,
 } from "./orders.js";
 import { isOnline, providers } from "./payments.js";
@@ -98,6 +99,14 @@ seedIfEmpty();
 ensureClientTables();
 seedDemoClient();
 initLocalBookingSchema();
+
+// Docker / env: всегда подставлять sync к cloud (не только при первом seed)
+if (process.env.ART_CLOUD_URL?.trim()) {
+  setSetting("cloud_sync_url", process.env.ART_CLOUD_URL.trim());
+}
+if (process.env.ART_SYNC_TOKEN?.trim()) {
+  setSetting("cloud_sync_token", process.env.ART_SYNC_TOKEN.trim());
+}
 
 // Старые сессии с лимитом 12ч — бессрочные (выход только вручную)
 db.prepare(
@@ -183,6 +192,7 @@ function mapServiceRow(s: {
   coefficient_enabled?: number | null;
   coefficient_step_kopecks?: number | null;
   duration_minutes?: number | null;
+  visible_in_pwa?: number | null;
 }) {
   return {
     id: s.id,
@@ -195,6 +205,7 @@ function mapServiceRow(s: {
     coefficientEnabled: !!s.coefficient_enabled,
     coefficientStepKopecks: s.coefficient_step_kopecks ?? 5000,
     durationMinutes: resolveServiceDurationMinutes(s.duration_minutes, s.tab_id),
+    visibleInPwa: s.visible_in_pwa == null ? true : !!s.visible_in_pwa,
   };
 }
 
@@ -558,15 +569,25 @@ app.post<{ Params: { id: string } }>("/api/orders/:id/checkout", async (req) => 
 
 app.post<{
   Params: { id: string };
-  Body: { method: "cash" | "card" | "sbp"; emulateResult?: "success" | "cancel" };
+  Body: {
+    method: "cash" | "card" | "sbp";
+    tipsKopecks?: number;
+    emulateResult?: "success" | "cancel";
+  };
 }>("/api/orders/:id/pay", async (req) => {
   requireWasher(req);
-  const order = getOrder(req.params.id);
+  let order = getOrder(req.params.id);
   if (!order) throw new Error("Заказ не найден");
   if (order.status !== "awaiting_payment" && order.status !== "draft") {
     throw new Error("Неверный статус заказа");
   }
   if (order.status === "draft") markAwaitingPayment(order.id);
+
+  if (req.body.tipsKopecks !== undefined) {
+    order = setOrderTips(req.params.id, req.body.tipsKopecks);
+  } else {
+    order = getOrder(req.params.id)!;
+  }
 
   const method = req.body.method;
   const provider = providers[method];
@@ -583,7 +604,8 @@ app.post<{
     }
   }
 
-  const start = await provider.start(order.totalKopecks, order.id);
+  const chargeKopecks = order.totalKopecks + (order.tipsKopecks ?? 0);
+  const start = await provider.start(chargeKopecks, order.id);
   if (!start.ok) return start;
 
   if (start.status === "paid") {
@@ -715,6 +737,7 @@ app.post<{
     coefficientEnabled?: boolean;
     coefficientStepKopecks?: number;
     durationMinutes?: number;
+    visibleInPwa?: boolean;
   };
 }>("/api/admin/services", async (req) => {
   requireAdmin(req);
@@ -732,8 +755,8 @@ app.post<{
   db.prepare(
     `INSERT INTO services (
       id, name, description, price_kopecks, active, sort_order, tab_id,
-      coefficient_enabled, coefficient_step_kopecks, duration_minutes
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      coefficient_enabled, coefficient_step_kopecks, duration_minutes, visible_in_pwa
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     req.body.name,
@@ -744,7 +767,8 @@ app.post<{
     tabId,
     req.body.coefficientEnabled ? 1 : 0,
     step,
-    durationMinutes
+    durationMinutes,
+    req.body.visibleInPwa === false ? 0 : 1
   );
   afterCatalogChange();
   return { id };
@@ -762,12 +786,14 @@ app.put<{
     coefficientEnabled?: boolean;
     coefficientStepKopecks?: number;
     durationMinutes?: number;
+    visibleInPwa?: boolean;
   };
 }>("/api/admin/services/:id", async (req) => {
   requireAdmin(req);
   const existing = db
     .prepare(
-      `SELECT tab_id, description, coefficient_enabled, coefficient_step_kopecks, duration_minutes
+      `SELECT tab_id, description, coefficient_enabled, coefficient_step_kopecks, duration_minutes,
+              visible_in_pwa
        FROM services WHERE id = ?`
     )
     .get(req.params.id) as
@@ -777,6 +803,7 @@ app.put<{
         coefficient_enabled: number;
         coefficient_step_kopecks: number;
         duration_minutes: number | null;
+        visible_in_pwa: number | null;
       }
     | undefined;
   const tabId =
@@ -802,9 +829,18 @@ app.put<{
     req.body.durationMinutes != null && Number(req.body.durationMinutes) > 0
       ? Math.round(Number(req.body.durationMinutes))
       : resolveServiceDurationMinutes(existing?.duration_minutes, tabId);
+  const visibleInPwa =
+    req.body.visibleInPwa !== undefined
+      ? req.body.visibleInPwa
+        ? 1
+        : 0
+      : existing?.visible_in_pwa == null
+        ? 1
+        : existing.visible_in_pwa;
   db.prepare(
     `UPDATE services SET name = ?, description = ?, price_kopecks = ?, active = ?, sort_order = ?,
-     tab_id = ?, coefficient_enabled = ?, coefficient_step_kopecks = ?, duration_minutes = ?
+     tab_id = ?, coefficient_enabled = ?, coefficient_step_kopecks = ?, duration_minutes = ?,
+     visible_in_pwa = ?
      WHERE id = ?`
   ).run(
     req.body.name,
@@ -816,6 +852,7 @@ app.put<{
     coeffEnabled,
     step,
     durationMinutes,
+    visibleInPwa,
     req.params.id
   );
   afterCatalogChange();

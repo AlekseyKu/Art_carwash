@@ -12,6 +12,9 @@
     "dist:pos": "pnpm --filter @art/desktop dist",
     "release:pos": "node scripts/publish-pos-release.mjs",
     "deploy:vps": "node scripts/deploy-vps.mjs",
+    "docker:up": "docker compose -f deploy/docker-compose.local.yml --env-file deploy/.env.local up --build -d",
+    "docker:down": "docker compose -f deploy/docker-compose.local.yml --env-file deploy/.env.local down",
+    "docker:logs": "docker compose -f deploy/docker-compose.local.yml --env-file deploy/.env.local logs -f",
     "kiosk": "powershell -ExecutionPolicy Bypass -File ./scripts/start-touch-kiosk.ps1",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck"

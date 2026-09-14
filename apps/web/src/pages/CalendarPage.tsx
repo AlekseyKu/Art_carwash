@@ -42,6 +42,32 @@ function formatDayTitle(date: string) {
   }).format(new Date(`${date}T12:00:00+03:00`));
 }
 
+function formatMskClock(d = new Date()) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(d);
+}
+
+function LiveMskClock() {
+  const [clock, setClock] = useState(() => formatMskClock());
+  useEffect(() => {
+    const tick = () => setClock(formatMskClock());
+    const id = window.setInterval(tick, 15_000);
+    // выравнивание на границу минуты
+    const msToNextMinute = 60_000 - (Date.now() % 60_000);
+    const align = window.setTimeout(() => {
+      tick();
+    }, msToNextMinute + 50);
+    return () => {
+      window.clearInterval(id);
+      window.clearTimeout(align);
+    };
+  }, []);
+  return <span className="calendar-day-clock">{clock}</span>;
+}
+
 function formatSlotTime(startsAt: string) {
   return new Intl.DateTimeFormat("ru-RU", {
     timeZone: "Europe/Moscow",
@@ -339,7 +365,7 @@ export function CalendarPage() {
 
   return (
     <TouchKeyboardProvider>
-      <div className="page calendar-page">
+      <div className="app-shell calendar-page">
         <header className="topbar">
           <div className="brand">Календарь записи</div>
           <div className="topbar-actions">
@@ -355,33 +381,63 @@ export function CalendarPage() {
           </div>
         </header>
 
-        <main className="content">
+        <main className="content calendar-content">
           {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
 
           <div className="calendar-day-nav">
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setDate((d) => addDays(d, -1))}
-            >
-              ←
-            </button>
             <div className="calendar-day-title">
               <strong>{formatDayTitle(date)}</strong>
-              <span className="muted">{date} · Europe/Moscow</span>
+              <span className="calendar-day-meta muted">
+                <span>{date}</span>
+                <LiveMskClock />
+              </span>
             </div>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setDate((d) => addDays(d, 1))}
-            >
-              →
-            </button>
-            <button type="button" className="btn-secondary" onClick={() => setDate(mskToday())}>
-              Сегодня
-            </button>
+            <div className="calendar-day-nav__actions">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Предыдущий день"
+                title="Предыдущий день"
+                onClick={() => setDate((d) => addDays(d, -1))}
+              >
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="M15 6 9 12l6 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Следующий день"
+                title="Следующий день"
+                onClick={() => setDate((d) => addDays(d, 1))}
+              >
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m9 6 6 6-6 6"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="icon-btn calendar-day-nav__today"
+                onClick={() => setDate(mskToday())}
+              >
+                Сегодня
+              </button>
+            </div>
           </div>
 
+          <div className="calendar-grid-scroll">
           <div className="calendar-grid">
             {rows.map((row) => {
               if (row.booking && !row.spanStart) {
@@ -436,6 +492,7 @@ export function CalendarPage() {
               );
             })}
           </div>
+          </div>
 
           {draftStartsAt && (
             <div
@@ -481,7 +538,7 @@ export function CalendarPage() {
                   <TouchField
                     value={clientQuery}
                     onChange={setClientQuery}
-                    placeholder="Телефон или госномер"
+                    placeholder="Телефон, номер или имя"
                   />
                 </label>
                 {clientHits.length > 0 && (

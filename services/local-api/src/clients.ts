@@ -196,28 +196,62 @@ export function searchClients(queryRaw: string, limit = 20): ClientDto[] {
   const digits = q.replace(/\D/g, "");
   const phoneLike = digits.length >= 3 ? `%${digits}%` : null;
   const plateLike = plate.length >= 2 ? `%${plate}%` : null;
-  const nameLike = `%${q}%`;
 
-  const rows = db
+  const contactRows = db
     .prepare(
       `SELECT id, phone, plate_number, name FROM clients
        WHERE
          (? IS NOT NULL AND replace(replace(replace(coalesce(phone,''),'+',''),' ',''),'-','') LIKE ?)
          OR (? IS NOT NULL AND plate_number LIKE ?)
-         OR (name IS NOT NULL AND name LIKE ?)
        ORDER BY updated_at DESC
        LIMIT ?`
     )
-    .all(
-      phoneLike,
-      phoneLike,
-      plateLike,
-      plateLike,
-      nameLike,
-      limit
-    ) as { id: string; phone: string | null; plate_number: string | null; name: string | null }[];
+    .all(phoneLike, phoneLike, plateLike, plateLike, limit) as {
+    id: string;
+    phone: string | null;
+    plate_number: string | null;
+    name: string | null;
+  }[];
 
-  return rows.map(mapClient);
+  const nameTokens = q
+    .toLocaleLowerCase("ru-RU")
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+
+  const byName: ClientDto[] = [];
+  if (nameTokens.length > 0) {
+    const candidates = db
+      .prepare(
+        `SELECT id, phone, plate_number, name FROM clients
+         WHERE name IS NOT NULL AND length(trim(name)) > 0
+         ORDER BY updated_at DESC
+         LIMIT 500`
+      )
+      .all() as {
+      id: string;
+      phone: string | null;
+      plate_number: string | null;
+      name: string | null;
+    }[];
+
+    for (const row of candidates) {
+      const nameLc = (row.name ?? "").toLocaleLowerCase("ru-RU");
+      if (nameTokens.every((token) => nameLc.includes(token))) {
+        byName.push(mapClient(row));
+      }
+    }
+  }
+
+  const seen = new Set<string>();
+  const out: ClientDto[] = [];
+  for (const client of [...contactRows.map(mapClient), ...byName]) {
+    if (seen.has(client.id)) continue;
+    seen.add(client.id);
+    out.push(client);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export function listClients(limit = 100): ClientDto[] {

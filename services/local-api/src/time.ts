@@ -48,6 +48,13 @@ export function addMinutesIso(iso: string, minutes: number): string {
   return new Date(new Date(iso).getTime() + minutes * 60_000).toISOString();
 }
 
+/** Округление вниз до шага сетки слотов (MSK). */
+export function roundDownToSlotIso(iso: string): string {
+  const { date, hour, minute } = mskParts(new Date(iso));
+  const rounded = Math.floor(minute / SLOT_STEP_MINUTES) * SLOT_STEP_MINUTES;
+  return mskWallToUtcIso(date, hour, rounded);
+}
+
 export function rangesOverlap(
   aStart: string,
   aEnd: string,

@@ -50,6 +50,35 @@
   color: var(--muted);
 }
 
+.booking-choice__desc-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  width: 100%;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.booking-choice--open .booking-choice__desc-wrap {
+  grid-template-rows: 1fr;
+}
+
+.booking-choice__desc {
+  overflow: hidden;
+  min-height: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+  padding-top: 0;
+  opacity: 0;
+  transition:
+    opacity 0.22s ease,
+    padding-top 0.28s ease;
+}
+
+.booking-choice--open .booking-choice__desc {
+  padding-top: 6px;
+  opacity: 1;
+}
+
 .booking-choice__badge {
   font-size: var(--text-xs);
   color: var(--brand-primary);

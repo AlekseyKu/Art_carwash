@@ -105,7 +105,7 @@ export function buildShiftReport(shiftId: string) {
   const orders = db
     .prepare(
       `SELECT o.id, o.number, o.status, o.payment_method, o.subtotal_kopecks, o.discount_kopecks,
-              o.total_kopecks, o.paid_at, o.created_at, o.washer_id,
+              o.total_kopecks, COALESCE(o.tips_kopecks, 0) as tips_kopecks, o.paid_at, o.created_at, o.washer_id,
               c.plate_number, w.name as washer_name
        FROM orders o
        LEFT JOIN clients c ON c.id = o.client_id
@@ -121,6 +121,7 @@ export function buildShiftReport(shiftId: string) {
     subtotal_kopecks: number;
     discount_kopecks: number;
     total_kopecks: number;
+    tips_kopecks: number;
     paid_at: string | null;
     created_at: string;
     washer_id: string;
@@ -130,12 +131,15 @@ export function buildShiftReport(shiftId: string) {
 
   const byPay = new Map<string, { total: number; count: number }>();
   let totalKopecks = 0;
+  let tipsKopecks = 0;
 
   const detailed = orders.map((o) => {
     totalKopecks += o.total_kopecks;
+    tipsKopecks += o.tips_kopecks || 0;
+    const charged = o.total_kopecks + (o.tips_kopecks || 0);
     const mKey = o.payment_method ?? "unknown";
     const m = byPay.get(mKey) ?? { total: 0, count: 0 };
-    m.total += o.total_kopecks;
+    m.total += charged;
     m.count += 1;
     byPay.set(mKey, m);
 
@@ -153,6 +157,7 @@ export function buildShiftReport(shiftId: string) {
       subtotalKopecks: o.subtotal_kopecks,
       discountKopecks: o.discount_kopecks,
       totalKopecks: o.total_kopecks,
+      tipsKopecks: o.tips_kopecks || 0,
       paidAt: o.paid_at,
       createdAt: o.created_at,
       washerId: o.washer_id,
@@ -170,6 +175,7 @@ export function buildShiftReport(shiftId: string) {
   return {
     shift,
     totalKopecks,
+    tipsKopecks,
     orderCount: detailed.length,
     byPaymentMethod: [...byPay.entries()].map(([label, v]) => ({
       label,

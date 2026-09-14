@@ -26,7 +26,7 @@ export function ClientsPage() {
   const [clients, setClients] = useState<ClientDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft());
   const [saving, setSaving] = useState(false);
   async function reload(q = query) {
     if (!token) return;
@@ -75,7 +75,7 @@ export function ClientsPage() {
 
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!token || !draft) return;
+    if (!token) return;
     setSaving(true);
     setError("");
     try {
@@ -88,7 +88,7 @@ export function ClientsPage() {
         },
         token
       );
-      setDraft(null);
+      setDraft(emptyDraft());
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка сохранения");
@@ -103,7 +103,7 @@ export function ClientsPage() {
     setError("");
     try {
       await api.deleteClient(id, token);
-      if (draft?.id === id) setDraft(null);
+      if (draft.id === id) setDraft(emptyDraft());
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка удаления");
@@ -124,6 +124,9 @@ export function ClientsPage() {
             <Link to="/" className="topbar-pill">
               Касса
             </Link>
+            <Link to="/calendar" className="topbar-pill">
+              Календарь
+            </Link>
             <Link to="/admin" className="topbar-pill">
               Админ
             </Link>
@@ -137,9 +140,9 @@ export function ClientsPage() {
               className="clients-search"
               value={query}
               onChange={setQuery}
-              placeholder="Поиск: телефон или номер"
+              placeholder="Поиск: телефон, номер или имя"
             />
-            <button type="button" className="btn primary" onClick={openCreate}>
+            <button type="button" className="btn-primary" onClick={openCreate}>
               Добавить
             </button>
           </div>
@@ -154,7 +157,7 @@ export function ClientsPage() {
                   <li key={c.id}>
                     <button
                       type="button"
-                      className={`clients-row${draft?.id === c.id ? " active" : ""}`}
+                      className={`clients-row${draft.id === c.id ? " active" : ""}`}
                       onClick={() => openEdit(c)}
                     >
                       <strong>{c.plateNumber ?? "без номера"}</strong>
@@ -176,56 +179,53 @@ export function ClientsPage() {
               </ul>
             </section>
 
-            {draft && (
-              <section className="panel clients-form-panel">
-                <h2 className="h2">{draft.id ? "Редактировать" : "Новый клиент"}</h2>
-                <form className="stack" onSubmit={onSave}>
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Госномер</span>
-                    <TouchField
-                      value={draft.plate}
-                      onChange={(plate) => setDraft((d) => (d ? { ...d, plate: plate.toUpperCase() } : d))}
-                      placeholder="А170РТ90"
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Телефон</span>
-                    <TouchField
-                      value={draft.phone}
-                      onChange={(phone) => setDraft((d) => (d ? { ...d, phone } : d))}
-                      placeholder="+7…"
-                      mode="numeric"
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Имя</span>
-                    <TouchField
-                      value={draft.name}
-                      onChange={(name) => setDraft((d) => (d ? { ...d, name } : d))}
-                      placeholder="Имя клиента"
-                    />
-                  </label>
-                  <div className="clients-form-actions">
-                    <button type="button" className="btn" onClick={() => setDraft(null)}>
-                      Отмена
+            <section className="panel clients-form-panel">
+              <h2 className="h2">{draft.id ? "Редактировать" : "Новый клиент"}</h2>
+              <form className="stack" onSubmit={onSave}>
+                <label className="stack" style={{ gap: 4 }}>
+                  <span className="muted">Госномер</span>
+                  <TouchField
+                    value={draft.plate}
+                    onChange={(plate) => setDraft((d) => ({ ...d, plate: plate.toUpperCase() }))}
+                    placeholder="А170РТ90"
+                  />
+                </label>
+                <label className="stack" style={{ gap: 4 }}>
+                  <span className="muted">Телефон</span>
+                  <TouchField
+                    value={draft.phone}
+                    onChange={(phone) => setDraft((d) => ({ ...d, phone }))}
+                    placeholder="+7…"
+                    mode="numeric"
+                  />
+                </label>
+                <label className="stack" style={{ gap: 4 }}>
+                  <span className="muted">Имя</span>
+                  <TouchField
+                    value={draft.name}
+                    onChange={(name) => setDraft((d) => ({ ...d, name }))}
+                    placeholder="Имя клиента"
+                  />
+                </label>
+                <div className="clients-form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setDraft(emptyDraft())}>
+                    {draft.id ? "Отмена" : "Очистить"}
+                  </button>
+                  {draft.id && (
+                    <button
+                      type="button"
+                      className="btn-danger"
+                      onClick={() => void onDelete(draft.id!)}
+                    >
+                      Удалить
                     </button>
-                    {draft.id && (
-                      <button
-                        type="button"
-                        className="btn"
-                        style={{ color: "var(--danger)" }}
-                        onClick={() => void onDelete(draft.id!)}
-                      >
-                        Удалить
-                      </button>
-                    )}
-                    <button type="submit" className="btn primary" disabled={saving}>
-                      {saving ? "…" : "Сохранить"}
-                    </button>
-                  </div>
-                </form>
-              </section>
-            )}
+                  )}
+                  <button type="submit" className="btn-primary" disabled={saving}>
+                    {saving ? "…" : "Сохранить"}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
         </main>
       </div>

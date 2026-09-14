@@ -8,6 +8,7 @@ import {
 } from "./db.js";
 import { getOpenShift, isShiftStale } from "./shifts.js";
 import { enqueueOutbox } from "./sync.js";
+import { linkPaidOrderToCalendar } from "./bookings.js";
 
 type OrderRow = {
   id: string;
@@ -21,6 +22,7 @@ type OrderRow = {
   subtotal_kopecks: number;
   discount_kopecks: number;
   total_kopecks: number;
+  tips_kopecks: number;
   created_at: string;
   paid_at: string | null;
   updated_at: string;
@@ -77,6 +79,7 @@ function mapOrder(row: OrderRow) {
     subtotalKopecks: row.subtotal_kopecks,
     discountKopecks: row.discount_kopecks,
     totalKopecks: row.total_kopecks,
+    tipsKopecks: row.tips_kopecks ?? 0,
     createdAt: row.created_at,
     paidAt: row.paid_at,
     updatedAt: row.updated_at,
@@ -345,6 +348,21 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
   return getOrder(orderId)!;
 }
 
+export function setOrderTips(orderId: string, tipsKopecks: number) {
+  const order = getOrder(orderId);
+  if (!order) throw new Error("Заказ не найден");
+  if (order.status === "paid" || order.status === "cancelled") {
+    throw new Error("Нельзя менять чаевые у закрытого заказа");
+  }
+  const tips = Math.max(0, Math.round(Number(tipsKopecks) || 0));
+  db.prepare("UPDATE orders SET tips_kopecks = ?, updated_at = ? WHERE id = ?").run(
+    tips,
+    new Date().toISOString(),
+    orderId
+  );
+  return getOrder(orderId)!;
+}
+
 export function markAwaitingPayment(orderId: string) {
   const order = getOrder(orderId);
   if (!order || order.status !== "draft") throw new Error("Неверный статус");
@@ -376,6 +394,15 @@ export function markPaid(orderId: string, method: PaymentMethod) {
   }
   const order = getOrder(orderId)!;
   enqueueOutbox("order.paid", order);
+  try {
+    const booking = linkPaidOrderToCalendar(order);
+    if (booking) enqueueOutbox("booking.upsert", booking);
+  } catch (e) {
+    console.warn(
+      "[calendar] не удалось внести заказ в календарь:",
+      e instanceof Error ? e.message : e
+    );
+  }
   return order;
 }
 
@@ -496,14 +523,14 @@ export function analytics(fromIso: string, toIso: string) {
   };
 }
 
-/** Аналитика по мойщикам-персоналу: выручка делится поровну между участниками заказа. */
+/** Аналитика по мойщикам-персоналу: выручка и чаевые делятся поровну между участниками заказа. */
 export function analyticsByWasher(fromIso: string, toIso: string) {
   const orders = db
     .prepare(
-      `SELECT id, total_kopecks FROM orders
+      `SELECT id, total_kopecks, COALESCE(tips_kopecks, 0) as tips_kopecks FROM orders
        WHERE status = 'paid' AND paid_at >= ? AND paid_at < ?`
     )
-    .all(fromIso, toIso) as { id: string; total_kopecks: number }[];
+    .all(fromIso, toIso) as { id: string; total_kopecks: number; tips_kopecks: number }[];
 
   type Acc = {
     id: string;
@@ -511,6 +538,7 @@ export function analyticsByWasher(fromIso: string, toIso: string) {
     salaryPercent: number;
     orderCount: number;
     revenueKopecks: number;
+    tipsKopecks: number;
     salaryKopecks: number;
   };
   const byStaff = new Map<string, Acc>();
@@ -525,7 +553,9 @@ export function analyticsByWasher(fromIso: string, toIso: string) {
       )
       .all(o.id) as { id: string; name: string; salary_percent: number }[];
     if (!staff.length) continue;
-    const share = Math.round(o.total_kopecks / staff.length);
+    const n = staff.length;
+    const share = Math.round(o.total_kopecks / n);
+    const tipShare = Math.round((o.tips_kopecks || 0) / n);
     for (const s of staff) {
       const acc = byStaff.get(s.id) ?? {
         id: s.id,
@@ -533,10 +563,12 @@ export function analyticsByWasher(fromIso: string, toIso: string) {
         salaryPercent: s.salary_percent,
         orderCount: 0,
         revenueKopecks: 0,
+        tipsKopecks: 0,
         salaryKopecks: 0,
       };
       acc.orderCount += 1;
       acc.revenueKopecks += share;
+      acc.tipsKopecks += tipShare;
       acc.salaryKopecks += Math.round((share * s.salary_percent) / 100);
       acc.salaryPercent = s.salary_percent;
       byStaff.set(s.id, acc);

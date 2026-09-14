@@ -200,7 +200,11 @@ export const api = {
     }),
   pay: (
     id: string,
-    body: { method: "cash" | "card" | "sbp"; emulateResult?: "success" | "cancel" },
+    body: {
+      method: "cash" | "card" | "sbp";
+      tipsKopecks?: number;
+      emulateResult?: "success" | "cancel";
+    },
     token: string
   ) =>
     request<{
@@ -294,6 +298,7 @@ export type ShiftDto = {
 export type ShiftReportDto = {
   shift: ShiftDto;
   totalKopecks: number;
+  tipsKopecks?: number;
   orderCount: number;
   byPaymentMethod: { label: string; totalKopecks: number; count: number }[];
   orders: {
@@ -304,6 +309,7 @@ export type ShiftReportDto = {
     subtotalKopecks: number;
     discountKopecks: number;
     totalKopecks: number;
+    tipsKopecks?: number;
     paidAt: string | null;
     createdAt: string;
     washerId: string;
@@ -385,6 +391,7 @@ export type OrderDto = {
   totalKopecks: number;
   subtotalKopecks: number;
   discountKopecks: number;
+  tipsKopecks?: number;
   discountId: string | null;
   vehicleClassId: string | null;
   vehicleClassName: string | null;
@@ -436,6 +443,7 @@ export type CatalogItemDto = {
   coefficientEnabled?: boolean;
   coefficientStepKopecks?: number;
   durationMinutes?: number;
+  visibleInPwa?: boolean;
 };
 
 export type StaffWasherDto = {
@@ -494,6 +502,8 @@ export const adminApi = {
       tabId: string;
       coefficientEnabled?: boolean;
       coefficientStepKopecks?: number;
+      durationMinutes?: number;
+      visibleInPwa?: boolean;
     },
     id?: string
   ) =>
@@ -652,6 +662,7 @@ export const adminApi = {
         salaryPercent: number;
         orderCount: number;
         revenueKopecks: number;
+        tipsKopecks: number;
         salaryKopecks: number;
       }[];
     }>(`/api/admin/analytics/by-washer?${params}`, { token });

@@ -179,6 +179,9 @@ export function migrate() {
   if (!tableColumns("services").has("duration_minutes")) {
     db.exec("ALTER TABLE services ADD COLUMN duration_minutes INTEGER");
   }
+  if (!tableColumns("services").has("visible_in_pwa")) {
+    db.exec("ALTER TABLE services ADD COLUMN visible_in_pwa INTEGER NOT NULL DEFAULT 1");
+  }
 
   const orderCols = tableColumns("orders");
   if (!orderCols.has("shift_id")) {
@@ -189,6 +192,9 @@ export function migrate() {
   }
   if (!orderCols.has("vehicle_class_name")) {
     db.exec("ALTER TABLE orders ADD COLUMN vehicle_class_name TEXT");
+  }
+  if (!orderCols.has("tips_kopecks")) {
+    db.exec("ALTER TABLE orders ADD COLUMN tips_kopecks INTEGER NOT NULL DEFAULT 0");
   }
 
   const itemCols = tableColumns("order_items");

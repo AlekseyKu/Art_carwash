@@ -198,6 +198,7 @@ export function AdminPage() {
       salaryPercent: number;
       orderCount: number;
       revenueKopecks: number;
+      tipsKopecks: number;
       salaryKopecks: number;
     }[];
   } | null>(null);
@@ -213,7 +214,10 @@ export function AdminPage() {
   const [svcForm, setSvcForm] = useState(emptySvcForm);
   const [editingServiceId, setEditingServiceId] = useState<string | null>(null);
   const [editingServiceActive, setEditingServiceActive] = useState(true);
+  const [editingServiceVisibleInPwa, setEditingServiceVisibleInPwa] = useState(true);
   const [classForm, setClassForm] = useState({ name: "", description: "", sortOrder: "10" });
+  const [editingVehicleClassId, setEditingVehicleClassId] = useState<string | null>(null);
+  const [editingVehicleClassActive, setEditingVehicleClassActive] = useState(true);
   const [priceClassId, setPriceClassId] = useState<string | null>(null);
   const [priceTabSlug, setPriceTabSlug] = useState<"services" | "extra-services">("services");
   const [priceItems, setPriceItems] = useState<PriceItemRow[]>([]);
@@ -851,7 +855,8 @@ export function AdminPage() {
                   <th>Название</th>
                   {isClassPricedTab && <th>Описание</th>}
                   {!isClassPricedTab && <th>Цена</th>}
-                  <th>Порядок</th>
+                  <th className="table-num">Порядок</th>
+                  <th className="table-pwa">В приложении</th>
                   <th className="table-actions">Действия</th>
                 </tr>
               </thead>
@@ -861,7 +866,39 @@ export function AdminPage() {
                     <td>{s.name}</td>
                     {isClassPricedTab && <td className="muted">{s.description || "—"}</td>}
                     {!isClassPricedTab && <td>{formatRub(s.priceKopecks)}</td>}
-                    <td>{s.sortOrder}</td>
+                    <td className="table-num">{s.sortOrder}</td>
+                    <td className="table-pwa">
+                      <label className="admin-toggle" title="Показывать в мобильном приложении">
+                        <input
+                          type="checkbox"
+                          checked={s.visibleInPwa !== false}
+                          onChange={() =>
+                            void adminApi
+                              .saveService(
+                                token,
+                                {
+                                  name: s.name,
+                                  description: s.description ?? "",
+                                  priceKopecks: s.priceKopecks,
+                                  active: s.active,
+                                  sortOrder: s.sortOrder,
+                                  tabId: s.tabId,
+                                  coefficientEnabled: s.coefficientEnabled,
+                                  coefficientStepKopecks: s.coefficientStepKopecks,
+                                  durationMinutes: s.durationMinutes,
+                                  visibleInPwa: s.visibleInPwa === false,
+                                },
+                                s.id
+                              )
+                              .then(refresh)
+                              .catch((e) =>
+                                setError(e instanceof Error ? e.message : "Ошибка сохранения")
+                              )
+                          }
+                        />
+                        <span className="admin-toggle__ui" />
+                      </label>
+                    </td>
                     <td className="table-actions">
                       <div className="row table-actions-row">
                         <button
@@ -870,6 +907,7 @@ export function AdminPage() {
                           onClick={() => {
                             setEditingServiceId(s.id);
                             setEditingServiceActive(s.active);
+                            setEditingServiceVisibleInPwa(s.visibleInPwa !== false);
                             setSvcForm({
                               name: s.name,
                               description: s.description ?? "",
@@ -900,6 +938,8 @@ export function AdminPage() {
                                   tabId: s.tabId,
                                   coefficientEnabled: s.coefficientEnabled,
                                   coefficientStepKopecks: s.coefficientStepKopecks,
+                                  durationMinutes: s.durationMinutes,
+                                  visibleInPwa: s.visibleInPwa !== false,
                                 },
                                 s.id
                               )
@@ -989,6 +1029,14 @@ export function AdminPage() {
                   )}
                 </>
               )}
+              <label className="row" style={{ alignItems: "center", gap: "0.5rem" }}>
+                <input
+                  type="checkbox"
+                  checked={editingServiceVisibleInPwa}
+                  onChange={(e) => setEditingServiceVisibleInPwa(e.target.checked)}
+                />
+                В мобильном приложении
+              </label>
               <button
                 type="button"
                 className="btn-primary"
@@ -1023,6 +1071,7 @@ export function AdminPage() {
                         active: editingServiceId ? editingServiceActive : true,
                         sortOrder,
                         tabId: activeCatalogTab.id,
+                        visibleInPwa: editingServiceVisibleInPwa,
                         ...(isClassPricedTab
                           ? {
                               coefficientEnabled: svcForm.coefficientEnabled,
@@ -1038,6 +1087,7 @@ export function AdminPage() {
                       setSvcForm(emptySvcForm);
                       setEditingServiceId(null);
                       setEditingServiceActive(true);
+                      setEditingServiceVisibleInPwa(true);
                       return refresh();
                     })
                     .catch((e) => setError(e instanceof Error ? e.message : "Ошибка сохранения"));
@@ -1052,6 +1102,7 @@ export function AdminPage() {
                   onClick={() => {
                     setEditingServiceId(null);
                     setEditingServiceActive(true);
+                    setEditingServiceVisibleInPwa(true);
                     setSvcForm(emptySvcForm);
                   }}
                 >
@@ -1073,18 +1124,36 @@ export function AdminPage() {
                 <tr>
                   <th>Название</th>
                   <th>Описание</th>
-                  <th>Порядок</th>
+                  <th className="table-num">Порядок</th>
                   <th className="table-actions">Действия</th>
                 </tr>
               </thead>
               <tbody>
                 {vehicleClasses.map((vc) => (
-                  <tr key={vc.id}>
+                  <tr
+                    key={vc.id}
+                    className={editingVehicleClassId === vc.id ? "row-editing" : undefined}
+                  >
                     <td>{vc.name}</td>
                     <td className="muted">{vc.description || "—"}</td>
-                    <td>{vc.sortOrder}</td>
+                    <td className="table-num">{vc.sortOrder}</td>
                     <td className="table-actions">
                       <div className="row table-actions-row">
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          onClick={() => {
+                            setEditingVehicleClassId(vc.id);
+                            setEditingVehicleClassActive(vc.active);
+                            setClassForm({
+                              name: vc.name,
+                              description: vc.description ?? "",
+                              sortOrder: String(vc.sortOrder),
+                            });
+                          }}
+                        >
+                          Изменить
+                        </button>
                         <button
                           type="button"
                           className="btn-ghost"
@@ -1126,7 +1195,7 @@ export function AdminPage() {
             {vehicleClasses.length === 0 && (
               <p className="muted">Классы ещё не созданы.</p>
             )}
-            <div className="row">
+            <div className="row" style={{ flexWrap: "wrap" }}>
               <TouchField
                 placeholder="Название"
                 title="Название класса"
@@ -1142,25 +1211,65 @@ export function AdminPage() {
                 onChange={(description) => setClassForm((f) => ({ ...f, description }))}
                 style={{ flex: 1, minWidth: "12rem" }}
               />
+              <TouchField
+                placeholder="Порядок"
+                title="Порядок отображения"
+                mode="numeric"
+                value={classForm.sortOrder}
+                onChange={(sortOrder) => setClassForm((f) => ({ ...f, sortOrder }))}
+                style={{ maxWidth: "7rem" }}
+              />
               <button
                 type="button"
                 className="btn-primary"
-                onClick={() =>
+                onClick={() => {
+                  if (!classForm.name.trim()) {
+                    setError("Укажите название класса");
+                    return;
+                  }
+                  const existing = editingVehicleClassId
+                    ? vehicleClasses.find((x) => x.id === editingVehicleClassId)
+                    : null;
+                  const parsedOrder = Number(String(classForm.sortOrder).replace(",", "."));
+                  const sortOrder = Number.isFinite(parsedOrder)
+                    ? Math.round(parsedOrder)
+                    : (existing?.sortOrder ?? 10);
                   void adminApi
-                    .saveVehicleClass(token, {
-                      name: classForm.name,
-                      description: classForm.description,
-                      sortOrder: Number(classForm.sortOrder) || 10,
-                      active: true,
-                    })
+                    .saveVehicleClass(
+                      token,
+                      {
+                        name: classForm.name.trim(),
+                        description: classForm.description.trim(),
+                        iconKey: existing?.iconKey,
+                        sortOrder,
+                        active: editingVehicleClassId ? editingVehicleClassActive : true,
+                      },
+                      editingVehicleClassId ?? undefined
+                    )
                     .then(() => {
                       setClassForm({ name: "", description: "", sortOrder: "10" });
+                      setEditingVehicleClassId(null);
+                      setEditingVehicleClassActive(true);
                       return refresh();
                     })
-                }
+                    .catch((e) => setError(e instanceof Error ? e.message : "Ошибка сохранения"));
+                }}
               >
-                Добавить
+                {editingVehicleClassId ? "Сохранить" : "Добавить"}
               </button>
+              {editingVehicleClassId && (
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    setEditingVehicleClassId(null);
+                    setEditingVehicleClassActive(true);
+                    setClassForm({ name: "", description: "", sortOrder: "10" });
+                  }}
+                >
+                  Отмена
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -1214,15 +1323,15 @@ export function AdminPage() {
                   <thead>
                     <tr>
                       <th>{priceTabSlug === "extra-services" ? "Доп.услуга" : "Услуга"}</th>
-                      <th>Цена ₽</th>
-                      <th>Время, мин</th>
+                      <th className="table-field">Цена ₽</th>
+                      <th className="table-field">Время, мин</th>
                     </tr>
                   </thead>
                   <tbody>
                     {priceItems.map((item) => (
                       <tr key={item.serviceId}>
                         <td>{item.name}</td>
-                        <td style={{ maxWidth: "10rem" }}>
+                        <td className="table-field">
                           <TouchField
                             placeholder="нет цены"
                             title={`Цена: ${item.name}`}
@@ -1231,7 +1340,7 @@ export function AdminPage() {
                             onChange={(priceRub) => updatePriceRub(item.serviceId, priceRub)}
                           />
                         </td>
-                        <td style={{ maxWidth: "8rem" }}>
+                        <td className="table-field">
                           <TouchField
                             placeholder={String(defaultDurationForPriceTab(priceTabSlug))}
                             title={`Время: ${item.name}`}
@@ -1299,7 +1408,7 @@ export function AdminPage() {
                 <tr>
                   <th>Название</th>
                   <th>Slug</th>
-                  <th>Порядок</th>
+                  <th className="table-num">Порядок</th>
                   <th className="table-actions">Действия</th>
                 </tr>
               </thead>
@@ -1308,7 +1417,7 @@ export function AdminPage() {
                   <tr key={ct.id}>
                     <td>{ct.name}</td>
                     <td className="muted">{ct.slug}</td>
-                    <td>{ct.sortOrder}</td>
+                    <td className="table-num">{ct.sortOrder}</td>
                     <td className="table-actions">
                       <div className="row table-actions-row">
                         <button
@@ -1464,13 +1573,19 @@ export function AdminPage() {
                 value={discForm.name}
                 onChange={(name) => setDiscForm((f) => ({ ...f, name }))}
               />
-              <select
-                value={discForm.type}
-                onChange={(e) => setDiscForm({ ...discForm, type: e.target.value })}
+              <button
+                type="button"
+                className="discount-type-toggle"
+                title="Тип скидки — нажмите, чтобы переключить"
+                onClick={() =>
+                  setDiscForm((f) => ({
+                    ...f,
+                    type: f.type === "percent" ? "fixed" : "percent",
+                  }))
+                }
               >
-                <option value="percent">%</option>
-                <option value="fixed">₽</option>
-              </select>
+                {discForm.type === "percent" ? "%" : "₽"}
+              </button>
               <TouchField
                 placeholder="Значение"
                 title="Значение скидки"
@@ -2022,6 +2137,7 @@ export function AdminPage() {
                           <th>Имя</th>
                           <th>Заказов</th>
                           <th>Выручка</th>
+                          <th>Чаевые</th>
                           <th>Зарплата %</th>
                           <th>Зарплата, руб</th>
                         </tr>
@@ -2032,6 +2148,7 @@ export function AdminPage() {
                             <td>{w.name}</td>
                             <td>{w.orderCount}</td>
                             <td>{formatRub(w.revenueKopecks)}</td>
+                            <td>{formatRub(w.tipsKopecks ?? 0)}</td>
                             <td>{w.salaryPercent}%</td>
                             <td>{formatRub(w.salaryKopecks)}</td>
                           </tr>

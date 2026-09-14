@@ -1,0 +1,56 @@
+# Полный локальный стенд: PWA + cloud-api + касса (local-api + web)
+# Запуск из корня репо:
+#   docker compose -f deploy/docker-compose.local.yml --env-file deploy/.env.local up --build
+#
+# URL:
+#   PWA   http://localhost:8080
+#   Касса http://localhost:3001  (мойщик 1111 · админ 9999)
+
+services:
+  cloud-api:
+    build:
+      context: ..
+      dockerfile: deploy/cloud-api.Dockerfile
+    restart: unless-stopped
+    env_file: .env.local
+    environment:
+      PORT: "3002"
+      ART_CLOUD_DATA_DIR: /data
+    volumes:
+      - cloud_data_local:/data
+    expose:
+      - "3002"
+
+  local-api:
+    build:
+      context: ..
+      dockerfile: deploy/local-api.Dockerfile
+    restart: unless-stopped
+    env_file: .env.local
+    environment:
+      PORT: "3001"
+      ART_DATA_DIR: /data
+      ART_WEB_DIST: /app/web
+      ART_CLOUD_URL: http://cloud-api:3002
+      ART_SYNC_TOKEN: ${ART_SYNC_TOKEN:-art-sync-secret}
+      ART_MASTER_CODE: ${ART_MASTER_CODE:-9999}
+    volumes:
+      - local_data:/data
+    ports:
+      - "3001:3001"
+    depends_on:
+      - cloud-api
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: deploy/caddy.local.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - cloud-api
+
+volumes:
+  cloud_data_local:
+  local_data:

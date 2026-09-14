@@ -124,6 +124,7 @@ export interface ShiftOrderDetail {
   subtotalKopecks: number;
   discountKopecks: number;
   totalKopecks: number;
+  tipsKopecks?: number;
   paidAt: string | null;
   createdAt: string;
   washerId: string;
@@ -135,6 +136,7 @@ export interface ShiftOrderDetail {
 export interface ShiftReport {
   shift: CashShift;
   totalKopecks: number;
+  tipsKopecks?: number;
   orderCount: number;
   byPaymentMethod: AnalyticsBucket[];
   orders: ShiftOrderDetail[];

@@ -308,7 +308,7 @@ function resolveServices(
 ) {
   const byId = new Map(catalog.services.map((s) => [s.id, s]));
   const main = byId.get(mainServiceId);
-  if (!main || !main.active) {
+  if (!main || !main.active || main.visibleInPwa === false) {
     throw Object.assign(new Error("Основная услуга не найдена"), { statusCode: 400 });
   }
   const tab = catalog.tabs.find((t) => t.id === main.tabId);
@@ -351,7 +351,7 @@ function resolveServices(
   const uniqueAddons = [...new Set(addonIds.filter((id) => id && id !== mainServiceId))];
   uniqueAddons.forEach((id, idx) => {
     const svc = byId.get(id);
-    if (!svc || !svc.active) {
+    if (!svc || !svc.active || svc.visibleInPwa === false) {
       throw Object.assign(new Error(`Доп.услуга не найдена: ${id}`), { statusCode: 400 });
     }
     items.push({

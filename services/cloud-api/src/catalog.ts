@@ -34,6 +34,7 @@ export interface CatalogSnapshot {
     sortOrder: number;
     priceKopecks: number | null;
     durationMinutes: number | null;
+    visibleInPwa?: boolean;
   }[];
   vehicleClasses: {
     id: string;

@@ -1,5 +1,12 @@
 import { nanoid } from "nanoid";
-import { db } from "./db.js";
+import {
+  defaultDurationMinutesForTabId,
+  getCatalogTabBySlug,
+  resolveServiceDurationMinutes,
+  TAB_SLUG_EXTRA_SERVICES,
+  TAB_SLUG_SERVICES,
+  db,
+} from "./db.js";
 import {
   addMinutesIso,
   formatMskTime,
@@ -7,6 +14,7 @@ import {
   LINE_POST_ID,
   mskDateString,
   rangesOverlap,
+  roundDownToSlotIso,
 } from "./time.js";
 
 export type BookingPayload = {
@@ -270,6 +278,10 @@ export function createKassaBooking(input: {
   customerPhone?: string | null;
   plateNumber?: string | null;
   classId?: string | null;
+  localOrderId?: string | null;
+  status?: string;
+  /** Walk-in с кассы: не блокировать оплату из‑за пересечения слота */
+  skipSlotCheck?: boolean;
   items: {
     serviceId: string;
     serviceName: string;
@@ -284,7 +296,7 @@ export function createKassaBooking(input: {
     input.items.reduce((s, i) => s + (i.durationMinutes || 0), 0) ||
     60;
   const endsAt = addMinutesIso(startsAt, duration);
-  assertSlotFree(startsAt, endsAt);
+  if (!input.skipSlotCheck) assertSlotFree(startsAt, endsAt);
 
   const now = new Date().toISOString();
   const id = nanoid();
@@ -300,10 +312,10 @@ export function createKassaBooking(input: {
     postId: LINE_POST_ID,
     startsAt,
     endsAt,
-    status: "booked",
+    status: input.status ?? "booked",
     source: "kassa",
     totalKopecks,
-    localOrderId: null,
+    localOrderId: input.localOrderId ?? null,
     createdAt: now,
     updatedAt: now,
     items: input.items.map((it, idx) => ({
@@ -318,6 +330,149 @@ export function createKassaBooking(input: {
   };
   upsertLocalBooking(payload);
   return payload;
+}
+
+export function findBookingByLocalOrderId(orderId: string): BookingPayload | null {
+  const row = db
+    .prepare("SELECT * FROM bookings WHERE local_order_id = ? ORDER BY updated_at DESC LIMIT 1")
+    .get(orderId) as BookingRow | undefined;
+  return row ? bookingRowToPayload(row) : null;
+}
+
+export function markBookingCompleted(id: string): BookingPayload {
+  const row = db.prepare("SELECT * FROM bookings WHERE id = ?").get(id) as BookingRow | undefined;
+  if (!row) throw Object.assign(new Error("Запись не найдена"), { statusCode: 404 });
+  const now = new Date().toISOString();
+  db.prepare(`UPDATE bookings SET status = 'completed', updated_at = ? WHERE id = ?`).run(
+    now,
+    id
+  );
+  return bookingRowToPayload({ ...row, status: "completed", updated_at: now });
+}
+
+type PaidOrderForCalendar = {
+  id: string;
+  number: number;
+  clientId: string | null;
+  vehicleClassId: string | null;
+  totalKopecks: number;
+  createdAt: string;
+  paidAt: string | null;
+  items: {
+    serviceId: string | null;
+    nameSnapshot: string;
+    priceKopecks: number;
+    qty: number;
+  }[];
+};
+
+/** После оплаты: связать заказ с календарём (walk-in или завершить бронь «Прибыл»). */
+export function linkPaidOrderToCalendar(order: PaidOrderForCalendar): BookingPayload | null {
+  const existing = findBookingByLocalOrderId(order.id);
+  if (existing) {
+    if (existing.status === "completed") return existing;
+    return markBookingCompleted(existing.id);
+  }
+
+  const servicesTabId = getCatalogTabBySlug(TAB_SLUG_SERVICES)?.id;
+  const extrasTabId = getCatalogTabBySlug(TAB_SLUG_EXTRA_SERVICES)?.id;
+
+  const bookingItems: {
+    serviceId: string;
+    serviceName: string;
+    kind: "main" | "addon";
+    priceKopecks: number;
+    durationMinutes: number;
+  }[] = [];
+
+  for (const it of order.items) {
+    const qty = Math.max(1, it.qty || 1);
+    let kind: "main" | "addon" = "addon";
+    let durationMinutes = 0;
+    let serviceId = it.serviceId ?? "";
+
+    if (it.serviceId) {
+      const svc = db
+        .prepare("SELECT id, tab_id, duration_minutes FROM services WHERE id = ?")
+        .get(it.serviceId) as
+        | { id: string; tab_id: string | null; duration_minutes: number | null }
+        | undefined;
+      if (svc) {
+        durationMinutes = resolveServiceDurationMinutes(svc.duration_minutes, svc.tab_id);
+        if (servicesTabId && svc.tab_id === servicesTabId) kind = "main";
+        else if (extrasTabId && svc.tab_id === extrasTabId) kind = "addon";
+        else {
+          // товары — в календарь без длительности
+          durationMinutes = 0;
+          kind = "addon";
+        }
+      } else {
+        durationMinutes = 15;
+      }
+    } else {
+      serviceId = `manual:${nanoid(8)}`;
+      durationMinutes = 0;
+    }
+
+    bookingItems.push({
+      serviceId,
+      serviceName: it.nameSnapshot,
+      kind,
+      priceKopecks: it.priceKopecks * qty,
+      durationMinutes: durationMinutes * qty,
+    });
+  }
+
+  if (!bookingItems.some((i) => i.kind === "main")) {
+    const first = bookingItems[0];
+    if (first) first.kind = "main";
+    else {
+      bookingItems.push({
+        serviceId: `order:${order.id}`,
+        serviceName: `Заказ #${order.number}`,
+        kind: "main",
+        priceKopecks: order.totalKopecks,
+        durationMinutes: defaultDurationMinutesForTabId(servicesTabId),
+      });
+    }
+  }
+
+  let clientName: string | null = null;
+  let clientPhone: string | null = null;
+  let plateNumber: string | null = null;
+  if (order.clientId) {
+    const c = db
+      .prepare("SELECT name, phone, plate_number FROM clients WHERE id = ?")
+      .get(order.clientId) as
+      | { name: string | null; phone: string | null; plate_number: string | null }
+      | undefined;
+    if (c) {
+      clientName = c.name;
+      clientPhone = c.phone;
+      plateNumber = c.plate_number;
+    }
+  }
+
+  const startsAt = roundDownToSlotIso(order.paidAt || order.createdAt || new Date().toISOString());
+  const durationMinutes =
+    bookingItems.reduce((s, i) => s + (i.durationMinutes || 0), 0) ||
+    defaultDurationMinutesForTabId(servicesTabId);
+  const endsAt = addMinutesIso(startsAt, durationMinutes);
+  const status = new Date(endsAt).getTime() > Date.now() ? "in_service" : "completed";
+
+  return createKassaBooking({
+    startsAt,
+    durationMinutes,
+    customerId: order.clientId,
+    customerName: clientName,
+    customerPhone: clientPhone,
+    plateNumber,
+    classId: order.vehicleClassId,
+    localOrderId: order.id,
+    status,
+    skipSlotCheck: true,
+    items: bookingItems,
+  });
 }
 
 export function cancelLocalBooking(id: string): BookingPayload {
@@ -348,7 +503,9 @@ export function markBookingArrived(id: string, localOrderId: string): BookingPay
 
 /** Сетка дня для UI кассы: слоты по 15 мин с занятостью. */
 export function dayCalendarGrid(date: string) {
-  const bookings = listBookingsForDate(date).filter((b) => isOccupyingStatus(b.status));
+  const bookings = listBookingsForDate(date).filter(
+    (b) => isOccupyingStatus(b.status) || b.status === "completed"
+  );
   const slots: {
     time: string;
     startsAt: string;

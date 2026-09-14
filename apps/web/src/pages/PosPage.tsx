@@ -1,5 +1,5 @@
 import { BRAND_NAME, formatRub, type ShiftReport } from "@art/shared";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   api,
@@ -15,7 +15,11 @@ import {
 } from "../api";
 import { RecentOrdersPanel } from "../components/RecentOrdersPanel";
 import { ShiftReportView } from "../components/ShiftReportView";
-import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
+import {
+  TouchField,
+  TouchKeyboardProvider,
+  useTouchKeyboard,
+} from "../components/OnScreenKeyboard";
 import { WindowControls } from "../components/WindowControls";
 import { vehicleClassIconSrc } from "../vehicleClassIcons";
 
@@ -105,6 +109,7 @@ export function PosPage() {
   const [manualPriceRub, setManualPriceRub] = useState("");
   const [payOpen, setPayOpen] = useState(false);
   const [payBusy, setPayBusy] = useState(false);
+  const [tipsRub, setTipsRub] = useState("0");
   const [pendingPay, setPendingPay] = useState<{
     paymentId: string;
     method: "card" | "sbp";
@@ -117,6 +122,7 @@ export function PosPage() {
   const [clientQuery, setClientQuery] = useState("");
   const [clientHits, setClientHits] = useState<ClientDto[]>([]);
   const [clientSearchBusy, setClientSearchBusy] = useState(false);
+  const [clientSearchOpen, setClientSearchOpen] = useState(false);
   const [attachedClient, setAttachedClient] = useState<ClientDto | null>(null);
   const [catalogTabId, setCatalogTabId] = useState<string | null>(null);
   const [shift, setShift] = useState<ShiftDto | null>(null);
@@ -150,10 +156,12 @@ export function PosPage() {
     setDiscountId(null);
     setPayOpen(false);
     setPendingPay(null);
+    setTipsRub("0");
     setRecentOpen(false);
     setClassInfoOpen(false);
     setClientQuery("");
     setClientHits([]);
+    setClientSearchOpen(false);
     setAttachedClient(null);
     setVehicleClassId(null);
     setWasherName("");
@@ -482,6 +490,7 @@ export function PosPage() {
       setAttachedClient(client);
       setClientQuery("");
       setClientHits([]);
+      setClientSearchOpen(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось привязать клиента");
     }
@@ -513,6 +522,7 @@ export function PosPage() {
       setShift(res.shift);
       setOpenShiftPrompt(false);
       setPendingPay(null);
+      setTipsRub("0");
       setPayOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось открыть смену");
@@ -616,6 +626,7 @@ export function PosPage() {
         return;
       }
       setPendingPay(null);
+      setTipsRub("0");
       setPayOpen(true);
     } catch (e) {
       if (isUnauthorized(e)) forceLogout(e instanceof Error ? e.message : undefined);
@@ -630,12 +641,20 @@ export function PosPage() {
       setPayOpen(false);
       return;
     }
+    const tipsKopecks = Math.max(
+      0,
+      Math.round((Number(String(tipsRub).replace(",", ".")) || 0) * 100)
+    );
     setPayBusy(true);
     setError("");
     try {
       await persist();
       await api.checkout(order.id, token);
-      const res = await api.pay(order.id, { method, emulateResult: emulate }, token);
+      const res = await api.pay(
+        order.id,
+        { method, tipsKopecks, emulateResult: emulate },
+        token
+      );
       if (res.blocked || res.error) {
         setError(res.error ?? "Оплата недоступна");
         return;
@@ -771,8 +790,30 @@ export function PosPage() {
           <Link to="/admin" className="topbar-pill">
             Админ
           </Link>
-          <button type="button" className="topbar-pill" onClick={() => void logout()}>
-            Смена PIN
+          <button
+            type="button"
+            className="topbar-pill topbar-pill--icon"
+            onClick={() => void logout()}
+            aria-label="Смена PIN"
+            title="Смена PIN"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect
+                x="5"
+                y="11"
+                width="14"
+                height="10"
+                rx="2"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+              <path
+                d="M8 11V8a4 4 0 0 1 8 0v3"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
           </button>
           <WindowControls visible={desktopShell} />
         </div>
@@ -845,49 +886,57 @@ export function PosPage() {
                 />
               </svg>
             </button>
+          </div>
 
-            <div className="client-search">
-              <TouchField
-                className="client-search__input"
-                value={clientQuery}
-                onChange={setClientQuery}
-                placeholder="Телефон или номер"
-                aria-label="Поиск клиента"
-              />
-              {attachedClient && !clientQuery && (
-                <div className="client-search__attached">
-                  <span>
-                    {attachedClient.plateNumber ?? "—"}
-                    {attachedClient.name ? ` · ${attachedClient.name}` : ""}
-                    {attachedClient.phone ? ` · ${attachedClient.phone}` : ""}
-                  </span>
-                  <button type="button" className="client-search__clear" onClick={() => void clearAttachedClient()}>
-                    ×
-                  </button>
-                </div>
-              )}
-              {(clientHits.length > 0 || clientSearchBusy) && clientQuery.trim().length >= 2 && (
-                <div className="client-search__dropdown" role="listbox">
-                  {clientSearchBusy && <div className="client-search__hint">Поиск…</div>}
-                  {clientHits.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="client-search__hit"
-                      onClick={() => void applyClient(c)}
-                    >
-                      <strong>{c.plateNumber ?? "без номера"}</strong>
-                      <span>
-                        {[c.name, c.phone].filter(Boolean).join(" · ") || "Клиент"}
-                      </span>
-                    </button>
-                  ))}
-                  {!clientSearchBusy && clientHits.length === 0 && (
-                    <div className="client-search__hint">Ничего не найдено</div>
-                  )}
-                </div>
-              )}
-            </div>
+          <div className="pos-toolbar-nav" aria-label="Разделы">
+            <ClientSearchControl
+              open={clientSearchOpen}
+              onOpenChange={setClientSearchOpen}
+              query={clientQuery}
+              onQueryChange={setClientQuery}
+              hits={clientHits}
+              busy={clientSearchBusy}
+              attached={attachedClient}
+              onApply={(c) => void applyClient(c)}
+              onClearAttached={() => void clearAttachedClient()}
+            />
+            <Link to="/calendar" className="icon-btn" aria-label="Календарь" title="Календарь">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect
+                  x="3"
+                  y="5"
+                  width="18"
+                  height="16"
+                  rx="2"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M3 10h18M8 3v4M16 3v4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </Link>
+            <Link to="/clients" className="icon-btn" aria-label="Клиенты" title="Клиенты">
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle cx="9" cy="8" r="3.25" stroke="currentColor" strokeWidth="2" />
+                <path
+                  d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+                <circle cx="17" cy="9" r="2.5" stroke="currentColor" strokeWidth="2" />
+                <path
+                  d="M15.2 19c.35-1.7 1.4-2.9 3-3.4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </Link>
           </div>
         </div>
 
@@ -1297,7 +1346,47 @@ export function PosPage() {
         <div className="modal-backdrop">
           <div className="modal stack">
             <h2 className="h2">Способ оплаты</h2>
-            <p className="muted">К оплате {formatRub(order?.totalKopecks ?? 0)}</p>
+            <p className="muted" style={{ margin: 0 }}>
+              Услуги {formatRub(order?.totalKopecks ?? 0)}
+            </p>
+            {!pendingPay && (
+              <div className="pay-tips">
+                <div className="muted" style={{ marginBottom: "0.35rem" }}>
+                  Чаевые
+                  {staffWasherIds.length > 1
+                    ? ` · на ${staffWasherIds.length} мойщиков поровну`
+                    : ""}
+                </div>
+                <div className="pay-tips__presets">
+                  {[0, 50, 100, 200].map((rub) => (
+                    <button
+                      key={rub}
+                      type="button"
+                      className={`pay-tips__chip${tipsRub === String(rub) ? " active" : ""}`}
+                      disabled={payBusy}
+                      onClick={() => setTipsRub(String(rub))}
+                    >
+                      {rub === 0 ? "Без" : `${rub} ₽`}
+                    </button>
+                  ))}
+                </div>
+                <TouchField
+                  className="pay-tips__custom"
+                  mode="numeric"
+                  title="Чаевые, ₽"
+                  placeholder="Своя сумма, ₽"
+                  value={tipsRub === "0" || ["50", "100", "200"].includes(tipsRub) ? "" : tipsRub}
+                  onChange={(v) => setTipsRub(v.replace(/[^\d.,]/g, "") || "0")}
+                />
+              </div>
+            )}
+            <p style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700 }}>
+              К оплате{" "}
+              {formatRub(
+                (order?.totalKopecks ?? 0) +
+                  Math.max(0, Math.round((Number(String(tipsRub).replace(",", ".")) || 0) * 100))
+              )}
+            </p>
             {!online && (
               <p style={{ color: "var(--warning)", margin: 0 }}>Нет сети — СБП недоступен</p>
             )}
@@ -1399,5 +1488,150 @@ export function PosPage() {
       )}
     </div>
     </TouchKeyboardProvider>
+  );
+}
+
+function ClientSearchControl({
+  open,
+  onOpenChange,
+  query,
+  onQueryChange,
+  hits,
+  busy,
+  attached,
+  onApply,
+  onClearAttached,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  query: string;
+  onQueryChange: (q: string) => void;
+  hits: ClientDto[];
+  busy: boolean;
+  attached: ClientDto | null;
+  onApply: (c: ClientDto) => void;
+  onClearAttached: () => void;
+}) {
+  const kb = useTouchKeyboard();
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  function collapse() {
+    onOpenChange(false);
+    onQueryChange("");
+    kb.close();
+  }
+
+  function expand() {
+    onOpenChange(true);
+    kb.open({
+      mode: "text",
+      title: "Телефон, номер или имя",
+      value: query,
+      onChange: onQueryChange,
+      layout: "ru",
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (rootRef.current?.contains(target)) return;
+      // Клавиатура рендерится вне блока поиска — не сворачивать по тапу по ней
+      if (target instanceof Element && target.closest(".osk-backdrop")) return;
+      if (!query.trim()) {
+        onOpenChange(false);
+        kb.close();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open, query, onOpenChange, kb]);
+
+  return (
+    <div
+      ref={rootRef}
+      className={`client-search${open ? " client-search--open" : ""}${attached ? " client-search--attached" : ""}`}
+    >
+      {!open ? (
+        <button
+          type="button"
+          className={`icon-btn${attached ? " active" : ""}`}
+          aria-label="Поиск клиента"
+          title={attached ? `Клиент: ${attached.plateNumber ?? attached.phone ?? attached.name ?? "привязан"}` : "Поиск клиента"}
+          onClick={expand}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.5" stroke="currentColor" strokeWidth="2" />
+            <path
+              d="M16.5 16.5 20 20"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      ) : (
+        <>
+          <div className="client-search__row">
+            <TouchField
+              className="client-search__input"
+              value={query}
+              onChange={onQueryChange}
+              placeholder="Телефон, номер или имя"
+              title="Поиск клиента"
+            />
+            <button
+              type="button"
+              className="icon-btn client-search__close"
+              aria-label="Свернуть поиск"
+              title="Свернуть"
+              onClick={collapse}
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path
+                  d="M6 6l12 12M18 6 6 18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          </div>
+          {attached && !query && (
+            <div className="client-search__attached">
+              <span>
+                {attached.plateNumber ?? "—"}
+                {attached.name ? ` · ${attached.name}` : ""}
+                {attached.phone ? ` · ${attached.phone}` : ""}
+              </span>
+              <button type="button" className="client-search__clear" onClick={onClearAttached}>
+                ×
+              </button>
+            </div>
+          )}
+          {(hits.length > 0 || busy) && query.trim().length >= 2 && (
+            <div className="client-search__dropdown" role="listbox">
+              {busy && <div className="client-search__hint">Поиск…</div>}
+              {hits.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  className="client-search__hit"
+                  onClick={() => onApply(c)}
+                >
+                  <strong>{c.plateNumber ?? "без номера"}</strong>
+                  <span>{[c.name, c.phone].filter(Boolean).join(" · ") || "Клиент"}</span>
+                </button>
+              ))}
+              {!busy && hits.length === 0 && (
+                <div className="client-search__hint">Ничего не найдено</div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

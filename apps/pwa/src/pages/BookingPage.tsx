@@ -248,11 +248,17 @@ export function BookingPage() {
           <ul className="booking-list">
             {mainServices.map((s) => {
               const price = catalog ? priceOf(catalog, s.id, classId, "services") : null;
+              const selected = mainId === s.id;
+              const desc = s.description?.trim() ?? "";
+              const open = selected && !!desc;
               return (
                 <li key={s.id}>
                   <button
                     type="button"
-                    className={`booking-choice${mainId === s.id ? " booking-choice--on" : ""}`}
+                    className={`booking-choice${selected ? " booking-choice--on" : ""}${
+                      open ? " booking-choice--open" : ""
+                    }`}
+                    aria-expanded={desc ? open : undefined}
                     onClick={() => setMainId(s.id)}
                   >
                     <span className="booking-choice__title">{s.name}</span>
@@ -260,6 +266,11 @@ export function BookingPage() {
                       {s.durationMinutes ?? 60} мин
                       {price != null ? ` · ${formatRub(price)}` : ""}
                     </span>
+                    {desc ? (
+                      <span className="booking-choice__desc-wrap">
+                        <span className="booking-choice__desc">{desc}</span>
+                      </span>
+                    ) : null}
                   </button>
                 </li>
               );
