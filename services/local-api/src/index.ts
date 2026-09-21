@@ -66,6 +66,11 @@ import {
 } from "./bookings.js";
 import { enqueueCatalogSnapshot } from "./catalogSnapshot.js";
 import { enqueueOutbox, flushOutbox, startSyncLoop } from "./sync.js";
+import {
+  ensureSiteScheduleDefault,
+  getSiteSchedule,
+  setSiteSchedule,
+} from "./siteSchedule.js";
 import { mskDateString } from "./time.js";
 
 function afterCatalogChange() {
@@ -96,6 +101,7 @@ app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, 
 
 migrate();
 seedIfEmpty();
+ensureSiteScheduleDefault();
 ensureClientTables();
 seedDemoClient();
 initLocalBookingSchema();
@@ -1247,6 +1253,18 @@ app.delete<{ Params: { id: string } }>("/api/admin/staff-washers/:id", async (re
 app.get("/api/admin/terminal", async (req) => {
   requireAdmin(req);
   return JSON.parse(getSetting("terminal_config") ?? "{}");
+});
+
+app.get("/api/admin/site-schedule", async (req) => {
+  requireAdmin(req);
+  return getSiteSchedule();
+});
+
+app.put<{ Body: unknown }>("/api/admin/site-schedule", async (req) => {
+  requireAdmin(req);
+  const next = setSiteSchedule(req.body as Parameters<typeof setSiteSchedule>[0]);
+  afterCatalogChange();
+  return next;
 });
 
 app.put<{ Body: Record<string, unknown> }>("/api/admin/terminal", async (req) => {

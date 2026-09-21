@@ -1,4 +1,4 @@
-import { BRAND_NAME, formatRub, type ShiftReport } from "@art/shared";
+import { BRAND_NAME, formatRub, SITE_SCHEDULE_WEEKDAY_LABELS, defaultSiteSchedule, type ShiftReport, type SiteSchedule } from "@art/shared";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
@@ -23,6 +23,7 @@ type FixedTab =
   | "discounts"
   | "washers"
   | "staff-washers"
+  | "site-schedule"
   | "terminal"
   | "analytics"
   | "security"
@@ -76,7 +77,7 @@ const MAIN_NAV: { id: NavGroupId; label: string }[] = [
 
 function navGroupForTab(t: Tab): NavGroupId {
   if (t === "analytics") return "analytics";
-  if (t === "washers" || t === "staff-washers") return "settings";
+  if (t === "washers" || t === "staff-washers" || t === "site-schedule") return "settings";
   if (t === "updates" || t === "terminal" || t === "security") return "admin";
   return "catalog";
 }
@@ -174,6 +175,7 @@ export function AdminPage() {
     comPort: "",
     notes: "",
   });
+  const [siteSchedule, setSiteSchedule] = useState<SiteSchedule>(() => defaultSiteSchedule());
   const [period, setPeriod] = useState<"day" | "month">("day");
   const [analyticsMode, setAnalyticsMode] = useState<AnalyticsMode>("period");
   const [shiftList, setShiftList] = useState<ShiftDto[]>([]);
@@ -314,7 +316,7 @@ export function AdminPage() {
 
   async function refresh() {
     if (!token) return;
-    const [tabs, s, vc, d, w, sw, t, sync] = await Promise.all([
+    const [tabs, s, vc, d, w, sw, t, sync, schedule] = await Promise.all([
       adminApi.catalogTabs(token),
       adminApi.services(token),
       adminApi.vehicleClasses(token),
@@ -323,6 +325,7 @@ export function AdminPage() {
       adminApi.staffWashers(token),
       adminApi.terminal(token),
       adminApi.syncSettings(token),
+      adminApi.siteSchedule(token),
     ]);
     setCatalogTabs(Array.isArray(tabs) ? tabs : []);
     setServices(Array.isArray(s) ? s : []);
@@ -337,6 +340,7 @@ export function AdminPage() {
       comPort: String(t?.comPort ?? ""),
       notes: String(t?.notes ?? ""),
     });
+    if (schedule?.days) setSiteSchedule({ days: schedule.days as SiteSchedule["days"] });
     if (sync?.cloudSyncUrl) setSyncUrl(sync.cloudSyncUrl);
     setHasSyncToken(!!sync?.hasToken);
 
@@ -651,6 +655,7 @@ export function AdminPage() {
       return [
         { id: "washers" as Tab, label: "Операторы" },
         { id: "staff-washers" as Tab, label: "Мойщики" },
+        { id: "site-schedule" as Tab, label: "Режим работы" },
       ];
     }
     return [
@@ -1871,6 +1876,95 @@ export function AdminPage() {
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {tab === "site-schedule" && (
+          <div className="panel stack">
+            <h2 className="h2">Режим работы</h2>
+            <p className="muted">
+              Часы по дням недели (MSK). Влияют на слоты записи в PWA и сетку календаря на кассе.
+            </p>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>День</th>
+                  <th>Выходной</th>
+                  <th>Открытие</th>
+                  <th>Закрытие</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siteSchedule.days.map((day, idx) => (
+                  <tr key={day.weekday}>
+                    <td>{SITE_SCHEDULE_WEEKDAY_LABELS[idx]}</td>
+                    <td>
+                      <label className="admin-toggle" title="Выходной">
+                        <input
+                          type="checkbox"
+                          checked={day.closed}
+                          onChange={(e) => {
+                            const closed = e.target.checked;
+                            setSiteSchedule((prev) => ({
+                              days: prev.days.map((d) =>
+                                d.weekday === day.weekday ? { ...d, closed } : d
+                              ),
+                            }));
+                          }}
+                        />
+                        <span className="admin-toggle__ui" />
+                      </label>
+                    </td>
+                    <td className="table-field">
+                      <TouchField
+                        title="Открытие"
+                        mode="ascii"
+                        placeholder="09:00"
+                        value={day.open}
+                        onChange={(open) =>
+                          setSiteSchedule((prev) => ({
+                            days: prev.days.map((d) =>
+                              d.weekday === day.weekday ? { ...d, open } : d
+                            ),
+                          }))
+                        }
+                      />
+                    </td>
+                    <td className="table-field">
+                      <TouchField
+                        title="Закрытие"
+                        mode="ascii"
+                        placeholder="21:00"
+                        value={day.close}
+                        onChange={(close) =>
+                          setSiteSchedule((prev) => ({
+                            days: prev.days.map((d) =>
+                              d.weekday === day.weekday ? { ...d, close } : d
+                            ),
+                          }))
+                        }
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() =>
+                void adminApi
+                  .saveSiteSchedule(token, siteSchedule)
+                  .then((next) => {
+                    if (next?.days) setSiteSchedule({ days: next.days as SiteSchedule["days"] });
+                    setSyncMsg("Режим работы сохранён (нужен sync каталога в cloud для PWA)");
+                  })
+                  .catch((e) => setError(e instanceof Error ? e.message : "Ошибка сохранения"))
+              }
+            >
+              Сохранить
+            </button>
+            {syncMsg && tab === "site-schedule" && <p className="muted">{syncMsg}</p>}
           </div>
         )}
 

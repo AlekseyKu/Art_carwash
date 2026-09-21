@@ -17,7 +17,7 @@ export function SplashPage() {
   useEffect(() => {
     if (!ready || !minDelay) return;
     if (customer) {
-      navigate("/app/price", { replace: true });
+      navigate("/app/home", { replace: true });
       return;
     }
     navigate(onboardingDone ? "/login" : "/welcome", { replace: true });

@@ -4,6 +4,7 @@ import { AppShell } from "./components/AppShell";
 import { InstallHint } from "./components/pwa/InstallHint";
 import { BookingPage } from "./pages/BookingPage";
 import { CabinetPage } from "./pages/CabinetPage";
+import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { OwnerPage } from "./pages/OwnerPage";
 import { PricePage } from "./pages/PricePage";
@@ -18,7 +19,7 @@ import { WelcomePage } from "./pages/WelcomePage";
 
 function GuestOnly({ children }: { children: React.ReactNode }) {
   const { customer } = useAuth();
-  if (customer) return <Navigate to="/app/price" replace />;
+  if (customer) return <Navigate to="/app/home" replace />;
   return <>{children}</>;
 }
 
@@ -77,7 +78,8 @@ export function App() {
               </SplashGate>
             }
           >
-            <Route index element={<Navigate to="price" replace />} />
+            <Route index element={<Navigate to="home" replace />} />
+            <Route path="home" element={<HomePage />} />
             <Route path="price" element={<PricePage />} />
             <Route path="booking" element={<BookingPage />} />
             <Route path="cabinet" element={<CabinetPage />} />

@@ -66,6 +66,7 @@ export function CabinetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [bookingActionId, setBookingActionId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<BookingDto | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<VehicleDraft>(emptyDraft());
@@ -215,12 +216,14 @@ export function CabinetPage() {
     }
   }
 
-  async function onCancelBooking(id: string) {
-    if (!window.confirm("Отменить эту запись?")) return;
+  async function onCancelBooking() {
+    if (!cancelTarget) return;
+    const id = cancelTarget.id;
     setError("");
     setBookingActionId(id);
     try {
       await apiClient.cancelBooking(id);
+      setCancelTarget(null);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось отменить");
@@ -393,7 +396,7 @@ export function CabinetPage() {
                         type="button"
                         className="booking-card__cancel"
                         disabled={bookingActionId === b.id}
-                        onClick={() => void onCancelBooking(b.id)}
+                        onClick={() => setCancelTarget(b)}
                       >
                         {bookingActionId === b.id ? "Отмена…" : "Отменить запись"}
                       </button>
@@ -427,6 +430,55 @@ export function CabinetPage() {
           </>
         )}
       </section>
+
+      {cancelTarget && (
+        <div
+          className="garage-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-booking-title"
+        >
+          <button
+            type="button"
+            className="garage-modal__backdrop"
+            aria-label="Закрыть"
+            onClick={() => setCancelTarget(null)}
+          />
+          <Card className="garage-modal__panel garage-modal__panel--confirm">
+            <h2 id="cancel-booking-title" className="ui-title-sm garage-modal__title">
+              Отменить запись?
+            </h2>
+            <p className="garage-modal__text">
+              Запись на <strong>{formatBookingWhen(cancelTarget.startsAt)}</strong>
+              {cancelTarget.plateNumber ? (
+                <>
+                  {" "}
+                  · {cancelTarget.plateNumber}
+                </>
+              ) : null}{" "}
+              будет отменена.
+            </p>
+            <div className="garage-modal__actions">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={bookingActionId === cancelTarget.id}
+                onClick={() => setCancelTarget(null)}
+              >
+                Оставить
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={bookingActionId === cancelTarget.id}
+                onClick={() => void onCancelBooking()}
+              >
+                {bookingActionId === cancelTarget.id ? "Отмена…" : "Да, отменить"}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {formOpen && (
         <div className="garage-modal" role="dialog" aria-modal="true" aria-labelledby="garage-form-title">

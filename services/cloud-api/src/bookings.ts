@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { nanoid } from "nanoid";
 import type { DatabaseSync } from "node:sqlite";
+import { formatHm, normalizeSiteSchedule, resolveDayWindow } from "@art/shared";
 import { getCatalogSnapshot, type CatalogSnapshot } from "./catalog.js";
 import {
   addMinutesIso,
@@ -11,8 +12,15 @@ import {
   LINE_POST_ID,
   mskDateString,
   mskParts,
+  mskWallToUtcIso,
   rangesOverlap,
 } from "./time.js";
+
+function scheduleFromCatalog(catalog: CatalogSnapshot) {
+  return catalog.site.schedule
+    ? normalizeSiteSchedule(catalog.site.schedule)
+    : null;
+}
 
 export type BookingItemRow = {
   id: string;
@@ -438,7 +446,8 @@ export function registerBookingRoutes(app: FastifyInstance, db: DatabaseSync) {
     const now = new Date();
     const notBefore = new Date(now.getTime() + rules.minLeadHours * 3600_000).toISOString();
     const busy = busyForDay(db, date);
-    const starts = candidateStarts(date, durationMinutes);
+    const window = resolveDayWindow(date, scheduleFromCatalog(catalog));
+    const starts = candidateStarts(date, durationMinutes, window);
     const free = filterFreeSlots(starts, durationMinutes, busy, notBefore);
 
     return {
@@ -517,10 +526,16 @@ export function registerBookingRoutes(app: FastifyInstance, db: DatabaseSync) {
       return reply.code(400).send({ error: "Нельзя записаться на прошедшую дату" });
     }
 
-    const dayClose = new Date(`${date}T${String(21).padStart(2, "0")}:00:00+03:00`).toISOString();
-    const dayOpen = new Date(`${date}T09:00:00+03:00`).toISOString();
+    const window = resolveDayWindow(date, scheduleFromCatalog(catalog));
+    if (!window) {
+      return reply.code(400).send({ error: "В этот день мойка не работает" });
+    }
+    const dayOpen = mskWallToUtcIso(date, window.openHour, window.openMinute);
+    const dayClose = mskWallToUtcIso(date, window.closeHour, window.closeMinute);
     if (startsAt < dayOpen || endsAt > dayClose) {
-      return reply.code(400).send({ error: "Время вне рабочих часов 09:00–21:00" });
+      return reply.code(400).send({
+        error: `Время вне рабочих часов ${formatHm(window.openHour, window.openMinute)}–${formatHm(window.closeHour, window.closeMinute)}`,
+      });
     }
 
     try {

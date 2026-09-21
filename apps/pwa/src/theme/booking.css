@@ -4,6 +4,33 @@
   gap: var(--space-4);
 }
 
+.booking-step button,
+.booking-choice,
+.booking-date,
+.booking-slot {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.booking-step button:focus,
+.booking-step button:focus-visible,
+.booking-choice:focus,
+.booking-choice:focus-visible,
+.booking-date:focus,
+.booking-date:focus-visible,
+.booking-slot:focus,
+.booking-slot:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.booking-choice--on:focus,
+.booking-choice--on:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--brand-primary);
+}
+
 .booking-hint {
   margin: 0;
   font-size: var(--text-sm);

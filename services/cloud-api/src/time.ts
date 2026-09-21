@@ -1,9 +1,9 @@
-/** Слоты записи: Europe/Moscow, окно 09:00–21:00, шаг 15 мин. */
+/** Слоты записи: Europe/Moscow, окно 09:00–21:00, шаг 30 мин. */
 
 export const BOOKING_TZ = "Europe/Moscow";
 export const OPEN_HOUR = 9;
 export const CLOSE_HOUR = 21;
-export const SLOT_STEP_MINUTES = 15;
+export const SLOT_STEP_MINUTES = 30;
 export const LINE_POST_ID = 1;
 
 const OCCUPYING = new Set(["booked", "arrived", "in_service"]);
@@ -63,12 +63,28 @@ export function rangesOverlap(
 
 export type BusyInterval = { startsAt: string; endsAt: string };
 
-/** Кандидаты старта на день: 09:00 … пока start+duration ≤ 21:00. */
-export function candidateStarts(date: string, durationMinutes: number): string[] {
+export type DayWindowInput = {
+  openHour: number;
+  openMinute?: number;
+  closeHour: number;
+  closeMinute?: number;
+};
+
+/** Кандидаты старта на день. `window === null` — выходной (пусто). */
+export function candidateStarts(
+  date: string,
+  durationMinutes: number,
+  window?: DayWindowInput | null
+): string[] {
   if (durationMinutes <= 0) return [];
+  if (window === null) return [];
+  const openH = window?.openHour ?? OPEN_HOUR;
+  const openM = window?.openMinute ?? 0;
+  const closeH = window?.closeHour ?? CLOSE_HOUR;
+  const closeM = window?.closeMinute ?? 0;
   const out: string[] = [];
-  const dayOpen = mskWallToUtcIso(date, OPEN_HOUR, 0);
-  const dayClose = mskWallToUtcIso(date, CLOSE_HOUR, 0);
+  const dayOpen = mskWallToUtcIso(date, openH, openM);
+  const dayClose = mskWallToUtcIso(date, closeH, closeM);
   let cursor = new Date(dayOpen);
   const closeMs = new Date(dayClose).getTime();
   const stepMs = SLOT_STEP_MINUTES * 60_000;

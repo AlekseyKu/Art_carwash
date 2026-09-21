@@ -112,6 +112,29 @@
   margin-top: var(--space-1);
 }
 
+.site-info__hours-list {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  line-height: var(--leading-normal);
+}
+
+.site-info__hours-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.site-info__hours-list li span:first-child {
+  min-width: 2rem;
+  color: var(--ink);
+  font-weight: var(--weight-medium);
+}
+
 .site-info__actions {
   display: flex;
   flex-wrap: wrap;

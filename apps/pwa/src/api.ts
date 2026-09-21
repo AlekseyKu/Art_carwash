@@ -26,6 +26,14 @@ export interface CatalogSnapshot {
     lat: number;
     lon: number;
     addressText: string;
+    schedule?: {
+      days: {
+        weekday: number;
+        closed: boolean;
+        open: string;
+        close: string;
+      }[];
+    };
   };
   bookingRules: {
     horizonDays: number;

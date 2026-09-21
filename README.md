@@ -2,7 +2,7 @@
 
 Кассовое приложение для автомойки (local-first POS + админ + облачные отчёты).
 
-Документация: [`doc/`](doc/). Фичи: [`doc/features/`](doc/features/).
+Документация: [`doc/`](doc/README.md) — карта по `product` / `pos` / `pwa` / `deploy`.
 
 ## Быстрый старт
 
@@ -44,7 +44,7 @@ pnpm docker:up
 | `pnpm dist:pos` | Portable exe → `apps/desktop/release/` (**сначала bump `apps/desktop/package.json` version**) |
 | `pnpm dev:desktop` | Electron kiosk в режиме разработки |
 
-Подробнее: [`doc/features/02-windows-exe-packaging.md`](doc/features/02-windows-exe-packaging.md).
+Подробнее: [`doc/pos/packaging.md`](doc/pos/packaging.md) · релиз: [`doc/deploy/pos-release.md`](doc/deploy/pos-release.md).
 
 ## Демо-доступ
 
@@ -54,14 +54,15 @@ pnpm docker:up
 | Админ | мастер-код `9999` |
 | Собственник (отчёты) | пароль `owner` |
 
-## Возможности этапа 1–3
+## Возможности (этапы 1–4)
 
-- Касса: PIN, 2 поста (черновики), услуги, скидки, оплата нал / карта / СБП
+- Касса: PIN, 2 поста, услуги, скидки, оплата нал / карта / СБП, смены, чаевые
 - Офлайн: касса на SQLite; СБП без сети недоступен
-- Админ: каталог, мойщики, терминал, аналитика, sync
-- Облако: outbox sync → отчёты владельцу
+- Админ: каталог (классы авто, цены, видимость в PWA), мойщики, терминал, аналитика, sync
+- Облако: outbox sync → отчёты; catalog snapshot → PWA
+- PWA: онбординг, прайс, запись, кабинет/гараж, «О мойке»
 - Адаптеры терминала/СБП: эмулятор + HTTP + sdk_bridge (`pnpm dev:bridge`)
-- Камера ANPR на въезде — в [бэклоге](doc/features/01-entry-camera-anpr.md) до покупки камеры
+- Камера ANPR на въезде — в [бэклоге](doc/pos/anpr.md) до покупки камеры
 
 ## Стек
 

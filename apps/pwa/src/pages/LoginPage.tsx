@@ -18,7 +18,7 @@ export function LoginPage() {
     setLoading(true);
     try {
       await login(phone, password);
-      navigate("/app/price", { replace: true });
+      navigate("/app/home", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка входа");
     } finally {

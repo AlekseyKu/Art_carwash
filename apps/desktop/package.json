@@ -1,6 +1,6 @@
 {
   "name": "@art/desktop",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "description": "Сенсорная оболочка кассы Автомойка АРТ (Electron kiosk)",
   "main": "src/main.cjs",
@@ -11,8 +11,8 @@
   },
   "build": {
     "appId": "ru.artcarwash.pos",
-    "productName": "Автомойка АРТ",
-    "copyright": "Автомойка АРТ",
+    "productName": "Автомойка у ЖД",
+    "copyright": "Автомойка у ЖД",
     "directories": {
       "output": "release",
       "buildResources": "build"

@@ -1,4 +1,6 @@
 import { db, CLASS_PRICED_TAB_SLUGS, getSetting, listVehicleClasses, resolveServiceDurationMinutes } from "./db.js";
+import { getSiteSchedule } from "./siteSchedule.js";
+import { formatHoursText } from "@art/shared";
 import { enqueueOutbox } from "./sync.js";
 
 const CLASS_PRICED = new Set<string>(CLASS_PRICED_TAB_SLUGS);
@@ -14,6 +16,14 @@ export interface CatalogSnapshot {
     lat: number;
     lon: number;
     addressText: string;
+    schedule?: {
+      days: {
+        weekday: number;
+        closed: boolean;
+        open: string;
+        close: string;
+      }[];
+    };
   };
   bookingRules: {
     horizonDays: number;
@@ -143,14 +153,16 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
     return Number.isFinite(n) ? n : fallback;
   };
 
+  const schedule = getSiteSchedule();
   return {
     version: process.env.npm_package_version ?? "0.3.3",
     updatedAt: new Date().toISOString(),
     site: {
-      name: getSetting("pwa_site_name") ?? getSetting("site_name") ?? "Автомойка у ЖД",
+      name: getSetting("pwa_site_name") ?? "Автомойка у ЖД",
       city: getSetting("pwa_site_city") ?? "г. Ступино",
       phone: getSetting("pwa_site_phone") ?? "+79852741430",
-      hoursText: getSetting("pwa_site_hours") ?? "Ежедневно 09:00–21:00",
+      hoursText: formatHoursText(schedule),
+      schedule,
       lat: Number(getSetting("pwa_site_lat") ?? "54.909290"),
       lon: Number(getSetting("pwa_site_lon") ?? "38.077015"),
       addressText: getSetting("pwa_site_address") ?? "г. Ступино",

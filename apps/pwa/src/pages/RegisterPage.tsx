@@ -20,7 +20,7 @@ export function RegisterPage() {
     setLoading(true);
     try {
       await register({ phone, password, passwordConfirm, pdnAccepted });
-      navigate("/app/price", { replace: true });
+      navigate("/app/home", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Ошибка регистрации");
     } finally {

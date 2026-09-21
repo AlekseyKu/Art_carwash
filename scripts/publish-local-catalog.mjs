@@ -119,7 +119,7 @@ const snapshot = {
   version: "local-dev",
   updatedAt: new Date().toISOString(),
   site: {
-    name: getSetting("pwa_site_name") ?? getSetting("site_name") ?? "Автомойка у ЖД",
+      name: getSetting("pwa_site_name") ?? "Автомойка у ЖД",
     city: getSetting("pwa_site_city") ?? "г. Ступино",
     phone: getSetting("pwa_site_phone") ?? "+79852741430",
     hoursText: getSetting("pwa_site_hours") ?? "Ежедневно 09:00–21:00",

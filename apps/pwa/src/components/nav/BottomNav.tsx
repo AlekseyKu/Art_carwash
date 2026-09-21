@@ -62,13 +62,13 @@ function NavSegment({ tab }: { tab: NavTab }) {
 
 export function BottomNav() {
   const { pathname } = useLocation();
-  const logoActive = pathname === "/app/price" || pathname === "/app";
+  const logoActive = pathname === "/app/home" || pathname === "/app";
 
   return (
     <nav className="bottom-nav" aria-label="Основная навигация">
       <div className="bottom-nav__bar">
         <NavLink
-          to="/app/price"
+          to="/app/home"
           end
           className={["bottom-nav__logo", logoActive ? "bottom-nav__logo--active" : ""]
             .filter(Boolean)

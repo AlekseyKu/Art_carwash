@@ -12,6 +12,7 @@ import {
   type VehicleClassDto,
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
+import { vehicleClassIconSrc } from "../vehicleClassIcons";
 
 function mskToday() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -95,6 +96,34 @@ function statusLabel(status: string) {
   }
 }
 
+function CloseIconButton({
+  onClick,
+  disabled,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      className="icon-btn"
+      aria-label="Закрыть"
+      title="Закрыть"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M6 6l12 12M18 6L6 18"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+      </svg>
+    </button>
+  );
+}
+
 function durationOf(s: CatalogItemDto, fallback: number) {
   return s.durationMinutes && s.durationMinutes > 0 ? s.durationMinutes : fallback;
 }
@@ -110,6 +139,7 @@ export function CalendarPage() {
   const [busy, setBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
+  const [servicePicker, setServicePicker] = useState<"main" | "addons" | null>(null);
 
   const [classes, setClasses] = useState<VehicleClassDto[]>([]);
   const [tabs, setTabs] = useState<CatalogTabDto[]>([]);
@@ -249,20 +279,6 @@ export function CalendarPage() {
 
   const selected = slots.find((s) => s.booking?.id === selectedId)?.booking ?? null;
 
-  const rows: { time: string; startsAt: string; booking: BookingDto | null; spanStart: boolean }[] =
-    [];
-  let lastId: string | null = null;
-  for (const s of slots) {
-    const id = s.booking?.id ?? null;
-    rows.push({
-      time: s.time,
-      startsAt: s.startsAt,
-      booking: s.booking,
-      spanStart: id !== lastId,
-    });
-    lastId = id;
-  }
-
   function pickClient(c: ClientDto) {
     setCustomerId(c.id);
     setCustomerName(c.name ?? "");
@@ -281,6 +297,7 @@ export function CalendarPage() {
     setPlateNumber("");
     setClientQuery("");
     setClientHits([]);
+    setServicePicker(null);
   }
 
   async function onArrive() {
@@ -437,304 +454,379 @@ export function CalendarPage() {
             </div>
           </div>
 
-          <div className="calendar-grid-scroll">
-          <div className="calendar-grid">
-            {rows.map((row) => {
-              if (row.booking && !row.spanStart) {
-                return (
-                  <div key={`${row.time}-cont`} className="calendar-row calendar-row--cont">
-                    <div className="calendar-time">{row.time}</div>
-                    <div className="calendar-cell calendar-cell--cont" />
+          <div className="calendar-body">
+            <div className="calendar-grid-scroll">
+              {slots.length === 0 ? (
+                <p className="muted" style={{ margin: "1rem 0" }}>
+                  В этот день мойка не работает — слотов нет.
+                </p>
+              ) : (
+                <div className="calendar-slots" role="list">
+                  {slots.map((row) => {
+                    const b = row.booking;
+                    const isDraft = !b && draftStartsAt === row.startsAt;
+                    const isSelected = !!b && selectedId === b.id;
+                    return (
+                      <button
+                        key={row.startsAt}
+                        type="button"
+                        role="listitem"
+                        title={
+                          b
+                            ? `${b.plateNumber || b.customerName || "Запись"} · ${statusLabel(b.status)}`
+                            : "Свободно — создать запись"
+                        }
+                        className={`calendar-slot${b ? " calendar-slot--busy" : ""}${
+                          isSelected ? " calendar-slot--selected" : ""
+                        }${isDraft ? " calendar-slot--draft" : ""}`}
+                        onClick={() => {
+                          if (b) {
+                            setSelectedId(b.id);
+                            setDraftStartsAt(null);
+                          } else {
+                            setSelectedId(null);
+                            setError("");
+                            setAddonIds([]);
+                            setServicePicker(null);
+                            setDraftStartsAt(row.startsAt);
+                            setMainId(mainServices[0]?.id ?? "");
+                          }
+                        }}
+                      >
+                        {row.time}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <aside className="calendar-side panel stack" aria-label="Карточка записи">
+              {draftStartsAt && servicePicker === "main" ? (
+                <>
+                  <div className="calendar-side__head">
+                    <h2 className="h2">Основная услуга</h2>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setServicePicker(null)}
+                    >
+                      Назад
+                    </button>
                   </div>
-                );
-              }
-              const b = row.booking;
-              const isDraft = !b && draftStartsAt === row.startsAt;
-              return (
-                <div key={row.time} className="calendar-row">
-                  <div className="calendar-time">{row.time}</div>
-                  <button
-                    type="button"
-                    className={`calendar-cell${b ? " calendar-cell--busy" : ""}${
-                      b && selectedId === b.id ? " calendar-cell--selected" : ""
-                    }${isDraft ? " calendar-cell--draft" : ""}`}
-                    onClick={() => {
-                      if (b) {
-                        setSelectedId(b.id);
-                        setDraftStartsAt(null);
-                      } else {
-                        setSelectedId(null);
-                        setError("");
-                        setAddonIds([]);
-                        setDraftStartsAt(row.startsAt);
-                        setMainId(mainServices[0]?.id ?? "");
-                      }
-                    }}
-                  >
-                    {b ? (
-                      <>
-                        <span className="calendar-cell__title">
-                          {b.plateNumber || b.customerName || "Запись"} · {statusLabel(b.status)}
-                        </span>
-                        <span className="calendar-cell__meta">
-                          {b.source === "pwa" ? "PWA" : "касса"}
-                          {b.customerPhone ? ` · ${b.customerPhone}` : ""}
-                          {b.items[0] ? ` · ${b.items[0].serviceName}` : ""}
-                        </span>
-                      </>
-                    ) : (
-                      <span className={isDraft ? "" : "muted"}>
-                        {isDraft ? "новая запись…" : "свободно — нажмите, чтобы записать"}
-                      </span>
-                    )}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          </div>
-
-          {draftStartsAt && (
-            <div
-              className="calendar-overlay"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Новая запись"
-            >
-              <button
-                type="button"
-                className="calendar-overlay__backdrop"
-                aria-label="Закрыть"
-                onClick={() => {
-                  if (busy) return;
-                  setDraftStartsAt(null);
-                  resetDraftForm();
-                }}
-              />
-              <div className="panel stack calendar-create calendar-overlay__sheet">
-                <h2 className="h2">Новая запись · {formatSlotTime(draftStartsAt)}</h2>
-                {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-
-                <label className="stack" style={{ gap: 4 }}>
-                  <span className="muted">Класс авто</span>
-                  <select
-                    value={classId}
-                    onChange={(e) => {
-                      setClassId(e.target.value);
-                      setMainId("");
-                      setAddonIds([]);
-                    }}
-                  >
-                    {classes.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="stack" style={{ gap: 4 }}>
-                  <span className="muted">Клиент (поиск)</span>
-                  <TouchField
-                    value={clientQuery}
-                    onChange={setClientQuery}
-                    placeholder="Телефон, номер или имя"
-                  />
-                </label>
-                {clientHits.length > 0 && (
-                  <ul className="calendar-client-hits">
-                    {clientHits.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className="btn-secondary"
-                          onClick={() => pickClient(c)}
-                        >
-                          {[c.plateNumber, c.name, c.phone].filter(Boolean).join(" · ") || c.id}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div className="calendar-create-grid">
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Госномер</span>
-                    <TouchField
-                      value={plateNumber}
-                      onChange={(v) => setPlateNumber(v.toUpperCase())}
-                      placeholder="А170РТ90"
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Телефон</span>
-                    <TouchField
-                      value={customerPhone}
-                      onChange={setCustomerPhone}
-                      placeholder="+7…"
-                      mode="numeric"
-                    />
-                  </label>
-                  <label className="stack" style={{ gap: 4 }}>
-                    <span className="muted">Имя</span>
-                    <TouchField
-                      value={customerName}
-                      onChange={setCustomerName}
-                      placeholder="Имя"
-                    />
-                  </label>
-                </div>
-
-                <div className="stack" style={{ gap: 6 }}>
-                  <span className="muted">Основная услуга</span>
-                  <div className="calendar-service-list">
+                  <div className="calendar-service-pick-list">
                     {mainServices.map((s) => (
                       <button
                         key={s.id}
                         type="button"
-                        className={`calendar-service-chip${mainId === s.id ? " active" : ""}`}
-                        onClick={() => setMainId(s.id)}
+                        className={`calendar-service-pick${mainId === s.id ? " active" : ""}`}
+                        onClick={() => {
+                          setMainId(s.id);
+                          setServicePicker(null);
+                        }}
                       >
-                        {s.name}
-                        <span className="muted">
+                        <span className="calendar-service-pick__name">{s.name}</span>
+                        <span className="calendar-service-pick__meta">
                           {formatRub(s.priceKopecks)} · {durationOf(s, 60)} мин
                         </span>
                       </button>
                     ))}
                     {mainServices.length === 0 && (
-                      <span className="muted">Нет услуг с ценой для этого класса</span>
+                      <p className="muted">Нет услуг с ценой для этого класса</p>
                     )}
                   </div>
-                </div>
+                </>
+              ) : draftStartsAt && servicePicker === "addons" ? (
+                <>
+                  <div className="calendar-side__head">
+                    <h2 className="h2">Дополнительно</h2>
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => setServicePicker(null)}
+                    >
+                      Назад
+                    </button>
+                  </div>
+                  <p className="muted" style={{ margin: 0 }}>
+                    Можно выбрать несколько
+                  </p>
+                  <div className="calendar-service-pick-list">
+                    {addonServices.map((s) => {
+                      const on = addonIds.includes(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className={`calendar-service-pick${on ? " active" : ""}`}
+                          aria-pressed={on}
+                          onClick={() =>
+                            setAddonIds((ids) =>
+                              on ? ids.filter((x) => x !== s.id) : [...ids, s.id]
+                            )
+                          }
+                        >
+                          <span className="calendar-service-pick__name">{s.name}</span>
+                          <span className="calendar-service-pick__meta">
+                            {formatRub(s.priceKopecks)} · {durationOf(s, 15)} мин
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {addonServices.length === 0 && (
+                      <p className="muted">Нет доп. услуг с ценой для этого класса</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => setServicePicker(null)}
+                  >
+                    Готово
+                    {addonIds.length > 0 ? ` · ${addonIds.length}` : ""}
+                  </button>
+                </>
+              ) : draftStartsAt ? (
+                <>
+                  <div className="calendar-side__head">
+                    <h2 className="h2">Новая запись · {formatSlotTime(draftStartsAt)}</h2>
+                    <CloseIconButton
+                      disabled={busy}
+                      onClick={() => {
+                        setDraftStartsAt(null);
+                        resetDraftForm();
+                        setError("");
+                      }}
+                    />
+                  </div>
+                  {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
 
-                {addonServices.length > 0 && (
                   <div className="stack" style={{ gap: 6 }}>
-                    <span className="muted">Дополнительно</span>
-                    <div className="calendar-service-list">
-                      {addonServices.map((s) => {
-                        const on = addonIds.includes(s.id);
+                    <span className="muted">Класс авто</span>
+                    <div className="vehicle-class-row" role="group" aria-label="Класс автомобиля">
+                      {classes.map((c) => {
+                        const src = vehicleClassIconSrc(c.iconKey || c.slug);
+                        const active = classId === c.id;
                         return (
                           <button
-                            key={s.id}
+                            key={c.id}
                             type="button"
-                            className={`calendar-service-chip${on ? " active" : ""}`}
-                            onClick={() =>
-                              setAddonIds((ids) =>
-                                on ? ids.filter((x) => x !== s.id) : [...ids, s.id]
-                              )
-                            }
+                            className={`vehicle-class-btn${active ? " active" : ""}`}
+                            aria-label={c.name}
+                            aria-pressed={active}
+                            title={c.name}
+                            onClick={() => {
+                              setClassId(c.id);
+                              setMainId("");
+                              setAddonIds([]);
+                            }}
                           >
-                            {s.name}
-                            <span className="muted">
-                              {formatRub(s.priceKopecks)} · {durationOf(s, 15)} мин
-                            </span>
+                            {src ? (
+                              <img src={src} alt="" className="vehicle-class-icon" />
+                            ) : (
+                              <span className="vehicle-class-fallback">{c.name.slice(0, 1)}</span>
+                            )}
                           </button>
                         );
                       })}
                     </div>
                   </div>
-                )}
 
-                <p>
-                  <strong>
-                    {durationMinutes} мин · {formatRub(totalKopecks)}
-                  </strong>
-                  {!mainId && (
-                    <span className="muted"> · выберите основную услугу</span>
+                  <label className="stack" style={{ gap: 4 }}>
+                    <span className="muted">Клиент (поиск)</span>
+                    <TouchField
+                      value={clientQuery}
+                      onChange={setClientQuery}
+                      placeholder="Телефон, номер или имя"
+                    />
+                  </label>
+                  {clientHits.length > 0 && (
+                    <ul className="calendar-client-hits">
+                      {clientHits.map((c) => (
+                        <li key={c.id}>
+                          <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => pickClient(c)}
+                          >
+                            {[c.plateNumber, c.name, c.phone].filter(Boolean).join(" · ") ||
+                              c.id}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   )}
-                </p>
 
-                <div className="row gap">
+                  <div className="calendar-create-grid">
+                    <label className="stack" style={{ gap: 4 }}>
+                      <span className="muted">Госномер</span>
+                      <TouchField
+                        value={plateNumber}
+                        onChange={(v) => setPlateNumber(v.toUpperCase())}
+                        placeholder="А170РТ90"
+                      />
+                    </label>
+                    <label className="stack" style={{ gap: 4 }}>
+                      <span className="muted">Телефон</span>
+                      <TouchField
+                        value={customerPhone}
+                        onChange={setCustomerPhone}
+                        placeholder="+7…"
+                        mode="numeric"
+                      />
+                    </label>
+                    <label className="stack" style={{ gap: 4 }}>
+                      <span className="muted">Имя</span>
+                      <TouchField
+                        value={customerName}
+                        onChange={setCustomerName}
+                        placeholder="Имя"
+                      />
+                    </label>
+                  </div>
+
                   <button
                     type="button"
-                    className="btn-primary"
-                    disabled={busy || !mainId}
-                    onClick={() => {
-                      setError("");
-                      void onCreate();
-                    }}
+                    className={`calendar-pick-btn${mainId ? " calendar-pick-btn--filled" : ""}`}
+                    onClick={() => setServicePicker("main")}
                   >
-                    Записать
+                    <span className="calendar-pick-btn__label">Основная услуга</span>
+                    <span className="calendar-pick-btn__value">
+                      {(() => {
+                        const main = mainServices.find((s) => s.id === mainId);
+                        if (!main) return "Выберите →";
+                        return `${main.name} · ${formatRub(main.priceKopecks)}`;
+                      })()}
+                    </span>
                   </button>
+
                   <button
                     type="button"
-                    className="btn-secondary"
-                    disabled={busy}
-                    onClick={() => {
-                      setDraftStartsAt(null);
-                      resetDraftForm();
-                      setError("");
-                    }}
+                    className={`calendar-pick-btn${
+                      addonIds.length ? " calendar-pick-btn--filled" : ""
+                    }`}
+                    onClick={() => setServicePicker("addons")}
+                    disabled={addonServices.length === 0}
                   >
-                    Отмена
+                    <span className="calendar-pick-btn__label">Дополнительно</span>
+                    <span className="calendar-pick-btn__value">
+                      {addonServices.length === 0
+                        ? "Нет доп. услуг"
+                        : addonIds.length === 0
+                          ? "Не выбрано →"
+                          : (() => {
+                              const names = addonIds
+                                .map((id) => addonServices.find((s) => s.id === id)?.name)
+                                .filter(Boolean);
+                              if (names.length <= 2) return names.join(", ");
+                              return `${names[0]}, ${names[1]} +${names.length - 2}`;
+                            })()}
+                    </span>
                   </button>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {selected && !draftStartsAt && (
-            <div
-              className="calendar-overlay"
-              role="dialog"
-              aria-modal="true"
-              aria-label="Запись"
-            >
-              <button
-                type="button"
-                className="calendar-overlay__backdrop"
-                aria-label="Закрыть"
-                onClick={() => setSelectedId(null)}
-              />
-              <div className="panel stack calendar-detail calendar-overlay__sheet">
-                <h2 className="h2">Запись</h2>
-                {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
-                <p>
-                  {selected.plateNumber || "—"} · {statusLabel(selected.status)} · {selected.source}
-                </p>
-                <p className="muted">
-                  {selected.customerName || "Без имени"}
-                  {selected.customerPhone ? ` · ${selected.customerPhone}` : ""}
-                </p>
-                <ul>
-                  {selected.items.map((it) => (
-                    <li key={it.id}>
-                      {it.kind === "main" ? "●" : "○"} {it.serviceName} ({it.durationMinutes} мин)
-                    </li>
-                  ))}
-                </ul>
-                <div className="row gap">
-                  {selected.status === "booked" && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        disabled={busy}
-                        onClick={() => void onArrive()}
-                      >
-                        Прибыл → в заказ
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-secondary"
-                        disabled={busy}
-                        onClick={() => void onCancel()}
-                      >
-                        Отменить
-                      </button>
-                    </>
+                  <p>
+                    <strong>
+                      {durationMinutes} мин · {formatRub(totalKopecks)}
+                    </strong>
+                    {!mainId && <span className="muted"> · выберите основную услугу</span>}
+                  </p>
+
+                  <div className="row gap">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={busy || !mainId}
+                      onClick={() => {
+                        setError("");
+                        void onCreate();
+                      }}
+                    >
+                      Записать
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={busy}
+                      onClick={() => {
+                        setDraftStartsAt(null);
+                        resetDraftForm();
+                        setError("");
+                      }}
+                    >
+                      Отмена
+                    </button>
+                  </div>
+                </>
+              ) : selected ? (
+                <>
+                  <div className="calendar-side__head">
+                    <h2 className="h2">Запись</h2>
+                    <CloseIconButton onClick={() => setSelectedId(null)} />
+                  </div>
+                  {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
+                  <p className="calendar-side__when">
+                    <strong>
+                      {formatSlotTime(selected.startsAt)}
+                      {selected.endsAt ? ` – ${formatSlotTime(selected.endsAt)}` : ""}
+                    </strong>
+                    <span className="muted"> · {statusLabel(selected.status)}</span>
+                  </p>
+                  <p>
+                    {selected.plateNumber || "—"}
+                    <span className="muted">
+                      {" "}
+                      · {selected.source === "pwa" ? "PWA" : "касса"}
+                    </span>
+                  </p>
+                  <p className="muted">
+                    {selected.customerName || "Без имени"}
+                    {selected.customerPhone ? ` · ${selected.customerPhone}` : ""}
+                  </p>
+                  <ul className="calendar-side__items">
+                    {selected.items.map((it) => (
+                      <li key={it.id}>
+                        {it.kind === "main" ? "●" : "○"} {it.serviceName} ({it.durationMinutes}{" "}
+                        мин)
+                        {it.priceKopecks != null ? ` · ${formatRub(it.priceKopecks)}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  {selected.totalKopecks != null && (
+                    <p>
+                      <strong>{formatRub(selected.totalKopecks)}</strong>
+                    </p>
                   )}
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => setSelectedId(null)}
-                  >
-                    Закрыть
-                  </button>
+                  <div className="row gap">
+                    {selected.status === "booked" && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          disabled={busy}
+                          onClick={() => void onArrive()}
+                        >
+                          Прибыл → в заказ
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          disabled={busy}
+                          onClick={() => void onCancel()}
+                        >
+                          Отменить
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="calendar-side__empty muted">
+                  <p>Выберите свободный слот, чтобы создать запись, или нажмите на бронь слева
+                    — здесь появятся детали.</p>
                 </div>
-              </div>
-            </div>
-          )}
+              )}
+            </aside>
+          </div>
         </main>
       </div>
     </TouchKeyboardProvider>

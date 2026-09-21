@@ -328,6 +328,22 @@
   padding-right: calc(var(--space-4) + 28px);
 }
 
+.garage-modal__panel--confirm .garage-modal__title {
+  padding-right: 0;
+}
+
+.garage-modal__text {
+  margin: var(--space-3) 0 var(--space-5);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--muted);
+}
+
+.garage-modal__text strong {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
 .garage-modal__close {
   color: var(--muted);
 }

@@ -1,3 +1,4 @@
+import { formatHm, resolveDayWindow } from "@art/shared";
 import { nanoid } from "nanoid";
 import {
   defaultDurationMinutesForTabId,
@@ -7,14 +8,18 @@ import {
   TAB_SLUG_SERVICES,
   db,
 } from "./db.js";
+import { getSiteSchedule } from "./siteSchedule.js";
 import {
   addMinutesIso,
   formatMskTime,
   isOccupyingStatus,
   LINE_POST_ID,
   mskDateString,
+  mskParts,
+  mskWallToUtcIso,
   rangesOverlap,
   roundDownToSlotIso,
+  SLOT_STEP_MINUTES,
 } from "./time.js";
 
 export type BookingPayload = {
@@ -296,7 +301,24 @@ export function createKassaBooking(input: {
     input.items.reduce((s, i) => s + (i.durationMinutes || 0), 0) ||
     60;
   const endsAt = addMinutesIso(startsAt, duration);
-  if (!input.skipSlotCheck) assertSlotFree(startsAt, endsAt);
+  if (!input.skipSlotCheck) {
+    const date = mskParts(new Date(startsAt)).date;
+    const window = resolveDayWindow(date, getSiteSchedule());
+    if (!window) {
+      throw Object.assign(new Error("В этот день мойка не работает"), { statusCode: 400 });
+    }
+    const dayOpen = mskWallToUtcIso(date, window.openHour, window.openMinute);
+    const dayClose = mskWallToUtcIso(date, window.closeHour, window.closeMinute);
+    if (startsAt < dayOpen || endsAt > dayClose) {
+      throw Object.assign(
+        new Error(
+          `Время вне рабочих часов ${formatHm(window.openHour, window.openMinute)}–${formatHm(window.closeHour, window.closeMinute)}`
+        ),
+        { statusCode: 400 }
+      );
+    }
+    assertSlotFree(startsAt, endsAt);
+  }
 
   const now = new Date().toISOString();
   const id = nanoid();
@@ -501,7 +523,7 @@ export function markBookingArrived(id: string, localOrderId: string): BookingPay
   });
 }
 
-/** Сетка дня для UI кассы: слоты по 15 мин с занятостью. */
+/** Сетка дня для UI кассы: слоты по SLOT_STEP_MINUTES с занятостью. */
 export function dayCalendarGrid(date: string) {
   const bookings = listBookingsForDate(date).filter(
     (b) => isOccupyingStatus(b.status) || b.status === "completed"
@@ -512,10 +534,27 @@ export function dayCalendarGrid(date: string) {
     booking: BookingPayload | null;
   }[] = [];
 
-  // 09:00–20:45 starts
-  const open = new Date(`${date}T09:00:00+03:00`);
-  const last = new Date(`${date}T20:45:00+03:00`);
-  for (let t = open.getTime(); t <= last.getTime(); t += 15 * 60_000) {
+  const window = resolveDayWindow(date, getSiteSchedule());
+  if (!window) {
+    return {
+      date,
+      timezone: "Europe/Moscow",
+      today: mskDateString(),
+      slots,
+      bookings,
+      closed: true as const,
+    };
+  }
+
+  const openMs = new Date(
+    mskWallToUtcIso(date, window.openHour, window.openMinute)
+  ).getTime();
+  const closeMs = new Date(
+    mskWallToUtcIso(date, window.closeHour, window.closeMinute)
+  ).getTime();
+  const stepMs = SLOT_STEP_MINUTES * 60_000;
+  const lastMs = closeMs - stepMs;
+  for (let t = openMs; t <= lastMs; t += stepMs) {
     const startsAt = new Date(t).toISOString();
     const booking =
       bookings.find((b) => startsAt >= b.startsAt && startsAt < b.endsAt) ?? null;
@@ -525,5 +564,12 @@ export function dayCalendarGrid(date: string) {
       booking,
     });
   }
-  return { date, timezone: "Europe/Moscow", today: mskDateString(), slots, bookings };
+  return {
+    date,
+    timezone: "Europe/Moscow",
+    today: mskDateString(),
+    slots,
+    bookings,
+    closed: false as const,
+  };
 }

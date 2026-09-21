@@ -707,6 +707,21 @@ export const adminApi = {
       body: JSON.stringify({ cloudSyncUrl, cloudSyncToken }),
       token,
     }),
+  siteSchedule: (token: string) =>
+    request<{
+      days: { weekday: number; closed: boolean; open: string; close: string }[];
+    }>("/api/admin/site-schedule", { token }),
+  saveSiteSchedule: (
+    token: string,
+    body: { days: { weekday: number; closed: boolean; open: string; close: string }[] }
+  ) =>
+    request<{
+      days: { weekday: number; closed: boolean; open: string; close: string }[];
+    }>("/api/admin/site-schedule", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      token,
+    }),
   updatesStatus: (token: string) =>
     request<{
       ok?: boolean;

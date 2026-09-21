@@ -235,6 +235,7 @@ export function migrate() {
   ensureDefaultCatalogTabs();
   ensureVehicleClassesAndPrices();
   ensureServiceDurations();
+  ensurePwaSiteDefaults();
 }
 
 export type VehicleClassRow = {
@@ -425,6 +426,14 @@ export function ensureServiceDurations() {
     `UPDATE services SET duration_minutes = 60
      WHERE duration_minutes IS NULL`
   ).run();
+}
+
+/** Публичное имя в PWA — отдельно от бренда кассы «Автомойка АРТ». */
+export function ensurePwaSiteDefaults() {
+  const current = getSetting("pwa_site_name");
+  if (!current || /^Автомойка\s+А[Рр][Тт]$/i.test(current.trim())) {
+    setSetting("pwa_site_name", "Автомойка у ЖД");
+  }
 }
 
 /** Гарантирует вкладки Услуги / Доп.услуги / Товары и привязку позиций. */

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { defaultSiteSchedule, formatHoursText } from "@art/shared";
 
 export interface CatalogSnapshot {
   version: string;
@@ -11,6 +12,14 @@ export interface CatalogSnapshot {
     lat: number;
     lon: number;
     addressText: string;
+    schedule?: {
+      days: {
+        weekday: number;
+        closed: boolean;
+        open: string;
+        close: string;
+      }[];
+    };
   };
   bookingRules: {
     horizonDays: number;
@@ -52,6 +61,8 @@ export interface CatalogSnapshot {
   }[];
 }
 
+const defaultSchedule = defaultSiteSchedule();
+
 export const DEFAULT_CATALOG: CatalogSnapshot = {
   version: "0.0.0",
   updatedAt: new Date(0).toISOString(),
@@ -59,7 +70,8 @@ export const DEFAULT_CATALOG: CatalogSnapshot = {
     name: "Автомойка у ЖД",
     city: "г. Ступино",
     phone: "+79852741430",
-    hoursText: "Ежедневно 09:00–21:00",
+    hoursText: formatHoursText(defaultSchedule),
+    schedule: defaultSchedule,
     lat: 54.90929,
     lon: 38.077015,
     addressText: "г. Ступино",

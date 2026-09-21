@@ -1655,6 +1655,53 @@ input.touch-field-input {
   overflow: hidden;
 }
 
+.calendar-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(22rem, 28rem);
+  gap: 0.85rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.calendar-side {
+  min-height: 0;
+  overflow: auto;
+  margin: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendar-side__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.calendar-side__head .h2 {
+  margin: 0;
+}
+
+.calendar-side__when {
+  margin: 0;
+}
+
+.calendar-side__items {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.1rem;
+}
+
+.calendar-side__empty {
+  display: grid;
+  place-items: center;
+  flex: 1;
+  min-height: 12rem;
+  text-align: center;
+  padding: 1rem;
+  line-height: 1.45;
+}
+
 .calendar-day-nav {
   display: flex;
   align-items: center;
@@ -1706,79 +1753,57 @@ input.touch-field-input {
   min-height: 0;
   overflow: auto;
   border-radius: 12px;
+  padding: 0.15rem;
 }
 
-.calendar-grid {
-  display: flex;
-  flex-direction: column;
+.calendar-slots {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.calendar-slot {
+  min-height: 3.1rem;
+  padding: 0.7rem 0.5rem;
   border: 1px solid var(--brand-silver-soft);
   border-radius: 12px;
-  overflow: hidden;
-  background: #fff;
-}
-
-.calendar-row {
-  display: grid;
-  grid-template-columns: 4.5rem 1fr;
-  border-bottom: 1px solid var(--brand-silver-soft);
-}
-
-.calendar-row:last-child {
-  border-bottom: none;
-}
-
-.calendar-time {
-  padding: 0.55rem 0.6rem;
-  font-size: 0.85rem;
-  color: var(--muted);
-  background: #f7f7f8;
-}
-
-.calendar-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.2rem;
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border: none;
-  background: #fff;
-  text-align: left;
-  cursor: pointer;
-  min-height: 2.6rem;
-}
-
-.calendar-cell--busy {
-  background: color-mix(in srgb, var(--brand-primary) 12%, white);
-}
-
-.calendar-cell--selected {
-  outline: 2px solid var(--brand-primary);
-  outline-offset: -2px;
-}
-
-.calendar-cell--draft {
-  outline: 2px dashed var(--brand-primary);
-  outline-offset: -2px;
-  background: color-mix(in srgb, var(--brand-primary) 6%, white);
-}
-
-.calendar-cell--cont {
-  background: color-mix(in srgb, var(--brand-primary) 8%, white);
-  cursor: default;
-}
-
-.calendar-cell__title {
+  background: var(--surface-elevated);
+  color: var(--ink);
+  font-size: 1.05rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease,
+    color 0.12s ease;
 }
 
-.calendar-cell__meta {
-  font-size: 0.85rem;
-  color: var(--muted);
+.calendar-slot:hover {
+  border-color: color-mix(in srgb, var(--brand-primary) 45%, var(--brand-silver-soft));
+}
+
+.calendar-slot--busy {
+  background: color-mix(in srgb, var(--brand-primary) 12%, white);
+  border-color: color-mix(in srgb, var(--brand-primary) 28%, var(--brand-silver-soft));
+}
+
+.calendar-slot--selected {
+  border-color: var(--brand-primary);
+  background: transparent;
+  color: var(--brand-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--brand-primary) 28%, transparent);
+}
+
+.calendar-slot--draft {
+  border-color: var(--brand-primary);
+  background: transparent;
+  color: var(--brand-primary);
+  border-style: dashed;
 }
 
 .calendar-detail {
-  margin-top: 1rem;
+  margin-top: 0;
 }
 
 .calendar-detail ul {
@@ -1786,40 +1811,9 @@ input.touch-field-input {
   padding-left: 1.1rem;
 }
 
-.calendar-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding: 0;
-}
-
-.calendar-overlay__backdrop {
-  position: absolute;
-  inset: 0;
-  border: none;
-  padding: 0;
-  margin: 0;
-  background: rgba(20, 22, 26, 0.45);
-  cursor: pointer;
-}
-
-.calendar-overlay__sheet {
-  position: relative;
-  z-index: 1;
-  width: min(40rem, 100%);
-  max-height: min(85vh, 52rem);
-  overflow: auto;
-  margin: 0;
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.18);
-}
-
 .calendar-create-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
   gap: 0.75rem;
 }
 
@@ -1830,6 +1824,87 @@ input.touch-field-input {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.calendar-pick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border: 2px solid var(--brand-silver-soft);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.calendar-pick-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.calendar-pick-btn:not(:disabled):active {
+  transform: scale(0.99);
+}
+
+.calendar-pick-btn--filled {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 8%, white);
+}
+
+.calendar-pick-btn__label {
+  font-size: 0.8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.calendar-pick-btn__value {
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.3;
+}
+
+.calendar-service-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.15rem 0.1rem 0.5rem;
+}
+
+.calendar-service-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 2px solid var(--brand-silver-soft);
+  border-radius: 14px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  flex-shrink: 0;
+}
+
+.calendar-service-pick.active {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+.calendar-service-pick__name {
+  font-weight: 700;
+}
+
+.calendar-service-pick__meta {
+  font-size: 0.9rem;
+  color: var(--muted);
 }
 
 .calendar-service-list {
