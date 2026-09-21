@@ -2,11 +2,13 @@ import { BRAND_NAME } from "@art/shared";
 import { useEffect, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import {
+  adminApi,
   api,
   getWasherToken,
   isUnauthorized,
   setWasherToken,
   type ClientDto,
+  type TariffDto,
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 import { WindowControls } from "../components/WindowControls";
@@ -23,6 +25,7 @@ type Draft = {
   name: string;
   phone: string;
   vehicles: DraftVehicle[];
+  tariffIds: string[];
 };
 
 function newVehicleKey() {
@@ -33,6 +36,7 @@ const emptyDraft = (): Draft => ({
   name: "",
   phone: "",
   vehicles: [{ key: newVehicleKey(), plate: "", isDefault: true }],
+  tariffIds: [],
 });
 
 function platesLabel(c: ClientDto): string {
@@ -54,16 +58,29 @@ export function ClientsPage() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<Draft>(() => emptyDraft());
   const [saving, setSaving] = useState(false);
+  const [tariffs, setTariffs] = useState<TariffDto[]>([]);
+  const [tariffPanel, setTariffPanel] = useState<"pick" | "create" | null>(null);
+  const [newTariffName, setNewTariffName] = useState("");
+  const [creatingTariff, setCreatingTariff] = useState(false);
+
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteCode, setDeleteCode] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   async function reload(q = query) {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const res = q.trim()
-        ? await api.searchClients(q.trim(), token, 100)
-        : await api.listClients(token, 100);
+      const [res, tariffList] = await Promise.all([
+        q.trim()
+          ? api.searchClients(q.trim(), token, 100)
+          : api.listClients(token, 100),
+        adminApi.tariffs(token),
+      ]);
       setClients(res.clients);
+      setTariffs(tariffList);
     } catch (e) {
       if (isUnauthorized(e)) {
         setWasherToken(null);
@@ -87,6 +104,8 @@ export function ClientsPage() {
 
   function openCreate() {
     setDraft(emptyDraft());
+    setTariffPanel(null);
+    setNewTariffName("");
     setError("");
   }
 
@@ -111,7 +130,10 @@ export function ClientsPage() {
       name: c.name ?? "",
       phone: c.phone ?? "",
       vehicles,
+      tariffIds: c.tariffIds ?? [],
     });
+    setTariffPanel(null);
+    setNewTariffName("");
     setError("");
   }
 
@@ -166,6 +188,7 @@ export function ClientsPage() {
           name: draft.name.trim() || undefined,
           phone: draft.phone.trim() || undefined,
           vehicles,
+          tariffIds: draft.tariffIds,
         },
         token
       );
@@ -178,16 +201,41 @@ export function ClientsPage() {
     }
   }
 
-  async function onDelete(id: string) {
-    if (!token) return;
-    if (!window.confirm("Удалить клиента?")) return;
-    setError("");
+  function openDeleteConfirm() {
+    setDeleteCode("");
+    setDeleteError("");
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    if (!token || !draft.id) return;
+    const code = deleteCode.trim();
+    if (!code) {
+      setDeleteError("Введите пароль администратора");
+      return;
+    }
+    setDeleteBusy(true);
+    setDeleteError("");
     try {
-      await api.deleteClient(id, token);
-      if (draft.id === id) setDraft(emptyDraft());
+      const auth = await api.loginAdmin(code);
+      if (!auth.ok || !auth.token) {
+        setDeleteError(auth.error ?? "Неверный пароль администратора");
+        return;
+      }
+      try {
+        await api.deleteClient(draft.id, token);
+      } finally {
+        await api.logout(auth.token).catch(() => undefined);
+      }
+      setDeleteOpen(false);
+      setDeleteCode("");
+      setDraft(emptyDraft());
+      setTariffPanel(null);
       await reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка удаления");
+      setDeleteError(err instanceof Error ? err.message : "Ошибка удаления");
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -263,7 +311,7 @@ export function ClientsPage() {
 
             <section className="panel clients-form-panel">
               <h2 className="h2">{draft.id ? "Редактировать" : "Новый клиент"}</h2>
-              <form className="stack" onSubmit={onSave}>
+              <form className="stack clients-form" onSubmit={onSave}>
                 <div className="stack" style={{ gap: 8 }}>
                   <span className="muted">Автомобили</span>
                   {draft.vehicles.map((v) => (
@@ -322,20 +370,145 @@ export function ClientsPage() {
                     placeholder="Имя клиента"
                   />
                 </label>
+
+                <div className="stack clients-tariffs" style={{ gap: 8 }}>
+                  <span className="muted">Тарифы</span>
+                  <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+                    {draft.tariffIds.map((id) => {
+                      const t = tariffs.find((x) => x.id === id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="topbar-pill active"
+                          onClick={() =>
+                            setDraft((d) => ({
+                              ...d,
+                              tariffIds: d.tariffIds.filter((x) => x !== id),
+                            }))
+                          }
+                        >
+                          {t?.name ?? id} ×
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="clients-tariffs-actions">
+                    <button
+                      type="button"
+                      className={`btn-secondary clients-tariffs-btn${tariffPanel === "pick" ? " active" : ""}`}
+                      onClick={() => {
+                        setTariffPanel((p) => (p === "pick" ? null : "pick"));
+                        setNewTariffName("");
+                      }}
+                    >
+                      Выбрать
+                    </button>
+                    <button
+                      type="button"
+                      className={`btn-secondary clients-tariffs-btn${tariffPanel === "create" ? " active" : ""}`}
+                      onClick={() => {
+                        setTariffPanel((p) => (p === "create" ? null : "create"));
+                      }}
+                    >
+                      Создать
+                    </button>
+                  </div>
+                  {tariffPanel === "pick" && (
+                    <div className="clients-tariffs-picker">
+                      {tariffs
+                        .filter((t) => !draft.tariffIds.includes(t.id))
+                        .map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            className="btn-secondary clients-tariffs-pick-item"
+                            onClick={() => {
+                              setDraft((d) => ({
+                                ...d,
+                                tariffIds: [...d.tariffIds, t.id],
+                              }));
+                              setTariffPanel(null);
+                            }}
+                          >
+                            {t.name}
+                            {!t.active ? " (выкл)" : ""}
+                          </button>
+                        ))}
+                      {tariffs.filter((t) => !draft.tariffIds.includes(t.id)).length === 0 && (
+                        <span className="muted">Нет доступных тарифов</span>
+                      )}
+                    </div>
+                  )}
+                  {tariffPanel === "create" && (
+                    <div className="clients-tariffs-create">
+                      <TouchField
+                        className="clients-tariffs-name"
+                        value={newTariffName}
+                        onChange={setNewTariffName}
+                        placeholder="Название, напр. Такси-2026"
+                        title="Название тарифа"
+                      />
+                      <button
+                        type="button"
+                        className="btn-primary clients-tariffs-btn"
+                        disabled={creatingTariff || !newTariffName.trim()}
+                        onClick={async () => {
+                          if (!token || !newTariffName.trim()) return;
+                          setCreatingTariff(true);
+                          setError("");
+                          try {
+                            const today = new Date();
+                            const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+                            const created = await adminApi.saveTariff(token, {
+                              name: newTariffName.trim(),
+                              validFrom: ymd,
+                              validTo: null,
+                              active: true,
+                              prices: [],
+                              clientIds: draft.id ? [draft.id] : [],
+                            });
+                            setTariffs(await adminApi.tariffs(token));
+                            setDraft((d) => ({
+                              ...d,
+                              tariffIds: d.tariffIds.includes(created.id)
+                                ? d.tariffIds
+                                : [...d.tariffIds, created.id],
+                            }));
+                            setNewTariffName("");
+                            setTariffPanel(null);
+                          } catch (err) {
+                            setError(
+                              err instanceof Error ? err.message : "Не удалось создать тариф"
+                            );
+                          } finally {
+                            setCreatingTariff(false);
+                          }
+                        }}
+                      >
+                        {creatingTariff ? "…" : "Сохранить"}
+                      </button>
+                    </div>
+                  )}
+                  <p className="muted" style={{ margin: 0, fontSize: "0.85rem" }}>
+                    Цены тарифа настройте в Админ → Тарифы
+                  </p>
+                </div>
+
                 <div className="clients-form-actions">
                   <button
                     type="button"
                     className="btn-secondary"
-                    onClick={() => setDraft(emptyDraft())}
+                    onClick={() => {
+                      setDraft(emptyDraft());
+                      setTariffPanel(null);
+                      setNewTariffName("");
+                    }}
                   >
                     {draft.id ? "Отмена" : "Очистить"}
                   </button>
                   {draft.id && (
-                    <button
-                      type="button"
-                      className="btn-danger"
-                      onClick={() => void onDelete(draft.id!)}
-                    >
+                    <button type="button" className="btn-danger" onClick={openDeleteConfirm}>
                       Удалить
                     </button>
                   )}
@@ -347,6 +520,51 @@ export function ClientsPage() {
             </section>
           </div>
         </main>
+
+        {deleteOpen && (
+          <div className="modal-backdrop" onClick={() => !deleteBusy && setDeleteOpen(false)}>
+            <div
+              className="modal stack"
+              role="dialog"
+              aria-label="Подтверждение удаления"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 className="h2" style={{ margin: 0 }}>
+                Удалить клиента?
+              </h2>
+              <p style={{ margin: 0 }}>
+                Для удаления введите пароль администратора (мастер-код).
+              </p>
+              <TouchField
+                value={deleteCode}
+                onChange={setDeleteCode}
+                placeholder="Пароль админа"
+                title="Пароль администратора"
+                mode="pin"
+                secret
+              />
+              {deleteError && <p style={{ color: "var(--danger)", margin: 0 }}>{deleteError}</p>}
+              <div className="row" style={{ gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={deleteBusy}
+                  onClick={() => setDeleteOpen(false)}
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  className="btn-danger"
+                  disabled={deleteBusy}
+                  onClick={() => void confirmDelete()}
+                >
+                  {deleteBusy ? "…" : "Удалить"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </TouchKeyboardProvider>
   );

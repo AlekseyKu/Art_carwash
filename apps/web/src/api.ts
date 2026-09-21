@@ -112,14 +112,19 @@ export const api = {
     }),
   logout: (token: string) =>
     request("/api/auth/logout", { method: "POST", token, body: JSON.stringify({}) }),
-  catalog: (classId?: string) =>
-    request<{
+  catalog: (classId?: string, clientId?: string) => {
+    const q = new URLSearchParams();
+    if (classId) q.set("classId", classId);
+    if (clientId) q.set("clientId", clientId);
+    const qs = q.toString();
+    return request<{
       vehicleClasses: VehicleClassDto[];
       tabs: CatalogTabDto[];
       services: CatalogItemDto[];
       discounts: { id: string; name: string; type: string; value: number }[];
       staffWashers: StaffWasherDto[];
-    }>(`/api/catalog${classId ? `?classId=${encodeURIComponent(classId)}` : ""}`),
+    }>(`/api/catalog${qs ? `?${qs}` : ""}`);
+  },
   bookingsDay: (token: string, date: string) =>
     request<{
       date: string;
@@ -263,6 +268,7 @@ export const api = {
         nickname?: string | null;
         isDefault?: boolean;
       }[];
+      tariffIds?: string[];
     },
     token: string
   ) => request<ClientDto>("/api/clients", { method: "POST", body: JSON.stringify(body), token }),
@@ -361,6 +367,31 @@ export type ClientDto = {
   visitCount: number;
   lastVisitAt: string | null;
   vehicles: ClientVehicleDto[];
+  tariffIds?: string[];
+  activeTariffNames?: string[];
+};
+
+export type TariffPriceDto = {
+  serviceId: string;
+  classId: string;
+  priceKopecks: number;
+};
+
+export type TariffDto = {
+  id: string;
+  name: string;
+  validFrom: string;
+  validTo: string | null;
+  active: boolean;
+  priceCount: number;
+  clientCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TariffDetailDto = TariffDto & {
+  prices: TariffPriceDto[];
+  clientIds: string[];
 };
 
 export type BookingDto = {
@@ -624,6 +655,34 @@ export const adminApi = {
       : request("/api/admin/discounts", { method: "POST", body: JSON.stringify(body), token }),
   deleteDiscount: (token: string, id: string) =>
     request<{ ok: boolean }>(`/api/admin/discounts/${id}`, { method: "DELETE", token }),
+  tariffs: (token: string) => request<TariffDto[]>("/api/admin/tariffs", { token }),
+  tariff: (token: string, id: string) =>
+    request<TariffDetailDto>(`/api/admin/tariffs/${id}`, { token }),
+  saveTariff: (
+    token: string,
+    body: {
+      name: string;
+      validFrom: string;
+      validTo?: string | null;
+      active: boolean;
+      prices: TariffPriceDto[];
+      clientIds: string[];
+    },
+    id?: string
+  ) =>
+    id
+      ? request<TariffDetailDto>(`/api/admin/tariffs/${id}`, {
+          method: "PUT",
+          body: JSON.stringify(body),
+          token,
+        })
+      : request<TariffDetailDto>("/api/admin/tariffs", {
+          method: "POST",
+          body: JSON.stringify(body),
+          token,
+        }),
+  deleteTariff: (token: string, id: string) =>
+    request<{ ok: boolean }>(`/api/admin/tariffs/${id}`, { method: "DELETE", token }),
   washers: (token: string) =>
     request<{ id: string; name: string; active: boolean }[]>("/api/admin/washers", { token }),
   saveWasher: (

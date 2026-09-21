@@ -1,5 +1,7 @@
 import { nanoid } from "nanoid";
 import { db } from "./db.js";
+import { enqueueOutbox } from "./outbox.js";
+import { mskDateString } from "./time.js";
 
 export type ClientVehicleDto = {
   id: string;
@@ -21,6 +23,9 @@ export type ClientDto = {
   visitCount: number;
   lastVisitAt: string | null;
   vehicles: ClientVehicleDto[];
+  tariffIds: string[];
+  /** Имена тарифов, активных сегодня (MSK). */
+  activeTariffNames: string[];
 };
 
 export type AnprEventDto = {
@@ -257,6 +262,33 @@ export function mapClient(row: ClientRow): ClientDto {
     vehicles.find((v) => v.isDefault)?.plateNumber ??
     vehicles[0]?.plateNumber ??
     row.plate_number;
+
+  let tariffIds: string[] = [];
+  let activeTariffNames: string[] = [];
+  try {
+    tariffIds = (
+      db.prepare("SELECT tariff_id FROM client_tariffs WHERE client_id = ?").all(row.id) as {
+        tariff_id: string;
+      }[]
+    ).map((r) => r.tariff_id);
+    const today = mskDateString();
+    activeTariffNames = (
+      db
+        .prepare(
+          `SELECT t.name FROM client_tariffs ct
+           JOIN tariffs t ON t.id = ct.tariff_id
+           WHERE ct.client_id = ?
+             AND t.active = 1
+             AND t.valid_from <= ?
+             AND (t.valid_to IS NULL OR t.valid_to >= ?)
+           ORDER BY t.name COLLATE NOCASE`
+        )
+        .all(row.id, today, today) as { name: string }[]
+    ).map((r) => r.name);
+  } catch {
+    /* tables may not exist yet during migrate */
+  }
+
   return {
     id: row.id,
     phone: row.phone,
@@ -268,6 +300,8 @@ export function mapClient(row: ClientRow): ClientDto {
     visitCount: visits.visitCount,
     lastVisitAt: visits.lastVisitAt,
     vehicles,
+    tariffIds,
+    activeTariffNames,
   };
 }
 
@@ -425,6 +459,7 @@ export function deleteClient(id: string): boolean {
   const existing = findClientById(id);
   if (!existing) return false;
   db.prepare("UPDATE orders SET client_id = NULL WHERE client_id = ?").run(id);
+  db.prepare("DELETE FROM client_tariffs WHERE client_id = ?").run(id);
   db.prepare("DELETE FROM client_vehicles WHERE client_id = ?").run(id);
   db.prepare("DELETE FROM loyalty_accounts WHERE client_id = ?").run(id);
   db.prepare("DELETE FROM clients WHERE id = ?").run(id);
@@ -437,6 +472,7 @@ export function upsertClient(input: {
   name?: string;
   id?: string;
   vehicles?: VehicleInput[];
+  tariffIds?: string[];
 }): ClientDto {
   const now = new Date().toISOString();
   const plate = input.plate ? normalizePlate(input.plate) : null;
@@ -446,6 +482,36 @@ export function upsertClient(input: {
       : plate
         ? [{ plateNumber: plate, isDefault: true }]
         : null;
+
+  const finish = (clientId: string) => {
+    if (input.tariffIds) {
+      // setClientTariffIds via dynamic path in index — avoid cycle; inline here
+      db.prepare("DELETE FROM client_tariffs WHERE client_id = ?").run(clientId);
+      const insert = db.prepare(
+        "INSERT OR IGNORE INTO client_tariffs (client_id, tariff_id) VALUES (?, ?)"
+      );
+      for (const raw of input.tariffIds) {
+        const tariffId = String(raw ?? "").trim();
+        if (!tariffId) continue;
+        const t = db.prepare("SELECT id FROM tariffs WHERE id = ?").get(tariffId);
+        if (!t) continue;
+        insert.run(clientId, tariffId);
+      }
+      const phoneRow = db
+        .prepare("SELECT phone FROM clients WHERE id = ?")
+        .get(clientId) as { phone: string | null } | undefined;
+      const phone = phoneRow?.phone?.trim();
+      if (phone) {
+        const ids = (
+          db.prepare("SELECT tariff_id FROM client_tariffs WHERE client_id = ?").all(clientId) as {
+            tariff_id: string;
+          }[]
+        ).map((r) => r.tariff_id);
+        enqueueOutbox("client.tariffs", { phone, tariffIds: ids });
+      }
+    }
+    return findClientById(clientId)!;
+  };
 
   if (input.id) {
     const existing = findClientById(input.id);
@@ -469,13 +535,12 @@ export function upsertClient(input: {
     else if (plate && existing.vehicles.length === 0) {
       replaceClientVehicles(input.id, [{ plateNumber: plate, isDefault: true }]);
     } else if (plate && existing.vehicles.length > 0) {
-      // обновить default plate в списке, если прислали только plate
       const next = existing.vehicles.map((v) =>
         v.isDefault ? { ...v, plateNumber: plate } : v
       );
       replaceClientVehicles(input.id, next);
     }
-    return findClientById(input.id)!;
+    return finish(input.id);
   }
 
   if (plate) {
@@ -485,7 +550,7 @@ export function upsertClient(input: {
         `UPDATE clients SET phone = COALESCE(?, phone), name = COALESCE(?, name), updated_at = ? WHERE id = ?`
       ).run(input.phone ?? null, input.name ?? null, now, byPlate.id);
       if (vehiclesInput) replaceClientVehicles(byPlate.id, vehiclesInput);
-      return findClientById(byPlate.id)!;
+      return finish(byPlate.id);
     }
   }
 
@@ -498,7 +563,7 @@ export function upsertClient(input: {
   ).run(id);
   if (vehiclesInput) replaceClientVehicles(id, vehiclesInput);
   else if (plate) replaceClientVehicles(id, [{ plateNumber: plate, isDefault: true }]);
-  return findClientById(id)!;
+  return finish(id);
 }
 
 export function recordAnprEvent(input: {

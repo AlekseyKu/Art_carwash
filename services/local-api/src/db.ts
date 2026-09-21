@@ -337,8 +337,12 @@ export function isServiceTabItem(serviceId: string): boolean {
   return isClassPricedTabId(row?.tab_id);
 }
 
-/** Цена для кассы: товары — services.price_kopecks; услуги/доп.услуги — service_prices или null. */
-export function resolveServicePrice(serviceId: string, classId: string | null): number | null {
+/** Цена для кассы: товары — services.price_kopecks; услуги/доп.услуги — тариф клиента или service_prices. */
+export function resolveServicePrice(
+  serviceId: string,
+  classId: string | null,
+  clientId?: string | null
+): number | null {
   const svc = db
     .prepare("SELECT id, price_kopecks, tab_id FROM services WHERE id = ?")
     .get(serviceId) as { id: string; price_kopecks: number; tab_id: string | null } | undefined;
@@ -349,6 +353,31 @@ export function resolveServicePrice(serviceId: string, classId: string | null): 
   }
 
   if (!classId) return null;
+
+  if (clientId) {
+    const today = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const tariff = db
+      .prepare(
+        `SELECT MIN(tp.price_kopecks) AS price
+         FROM client_tariffs ct
+         JOIN tariffs t ON t.id = ct.tariff_id
+         JOIN tariff_prices tp ON tp.tariff_id = t.id
+         WHERE ct.client_id = ?
+           AND t.active = 1
+           AND t.valid_from <= ?
+           AND (t.valid_to IS NULL OR t.valid_to >= ?)
+           AND tp.service_id = ?
+           AND tp.class_id = ?`
+      )
+      .get(clientId, today, today, serviceId, classId) as { price: number | null } | undefined;
+    if (tariff?.price != null) return Number(tariff.price);
+  }
+
   const price = db
     .prepare("SELECT price_kopecks FROM service_prices WHERE service_id = ? AND class_id = ?")
     .get(serviceId, classId) as { price_kopecks: number } | undefined;

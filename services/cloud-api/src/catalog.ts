@@ -59,6 +59,18 @@ export interface CatalogSnapshot {
     classId: string;
     priceKopecks: number;
   }[];
+  tariffs?: {
+    id: string;
+    name: string;
+    validFrom: string;
+    validTo: string | null;
+    active: boolean;
+    prices: {
+      serviceId: string;
+      classId: string;
+      priceKopecks: number;
+    }[];
+  }[];
 }
 
 const defaultSchedule = defaultSiteSchedule();
@@ -86,6 +98,7 @@ export const DEFAULT_CATALOG: CatalogSnapshot = {
   services: [],
   vehicleClasses: [],
   servicePrices: [],
+  tariffs: [],
 };
 
 export function initCatalogSchema(db: DatabaseSync) {

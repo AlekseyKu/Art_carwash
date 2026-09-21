@@ -2,12 +2,9 @@ import { nanoid } from "nanoid";
 import { upsertLocalBooking, type BookingPayload } from "./bookings.js";
 import { upsertClientFromCloud } from "./clients.js";
 import { db, getSetting } from "./db.js";
+import { enqueueOutbox } from "./outbox.js";
 
-export function enqueueOutbox(type: string, payload: unknown) {
-  db.prepare(
-    "INSERT INTO outbox (id, type, payload, created_at, synced_at) VALUES (?, ?, ?, ?, NULL)"
-  ).run(nanoid(), type, JSON.stringify(payload), new Date().toISOString());
-}
+export { enqueueOutbox };
 
 function applyPullEvents(
   events: { id: string; type: string; payload: unknown; createdAt: string }[]

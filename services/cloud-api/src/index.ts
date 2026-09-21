@@ -12,6 +12,7 @@ import {
   saveCatalogSnapshot,
 } from "./catalog.js";
 import {
+  applyClientTariffsFromStation,
   enqueueAllCustomerUpserts,
   initCustomerSchema,
   registerCustomerRoutes,
@@ -174,6 +175,13 @@ app.post<{
       insertEvent.run(ev.id, ev.type, ev.createdAt, now);
       if (ev.type === "catalog.snapshot") {
         saveCatalogSnapshot(db, ev.payload as CatalogSnapshot);
+        continue;
+      }
+      if (ev.type === "client.tariffs") {
+        applyClientTariffsFromStation(
+          db,
+          (ev.payload ?? {}) as { phone?: string; tariffIds?: string[] }
+        );
         continue;
       }
       if (ev.type === "booking.upsert" || ev.type === "booking.status") {

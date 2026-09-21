@@ -7,7 +7,7 @@ import {
   type VehicleClassRow,
 } from "./db.js";
 import { getOpenShift, isShiftStale } from "./shifts.js";
-import { enqueueOutbox } from "./sync.js";
+import { enqueueOutbox } from "./outbox.js";
 import { linkPaidOrderToCalendar } from "./bookings.js";
 
 type OrderRow = {
@@ -293,13 +293,10 @@ export function setOrderItems(
         }
       | undefined;
     if (!svc) continue;
-    const catalogPrice = resolveServicePrice(svc.id, order.vehicle_class_id);
+    const catalogPrice = resolveServicePrice(svc.id, order.vehicle_class_id, order.client_id);
     if (catalogPrice === null) continue;
 
-    const base =
-      item.basePriceKopecks != null && Number.isFinite(item.basePriceKopecks)
-        ? Math.max(0, Math.round(item.basePriceKopecks))
-        : catalogPrice;
+    const base = catalogPrice;
     let extra = Math.max(0, Math.round(item.coefficientExtraKopecks ?? 0));
     if (!svc.coefficient_enabled) extra = 0;
     const price = linePriceKopecks(base, extra, discountPercent);
@@ -358,7 +355,49 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
 
   for (const item of items) {
     if (item.is_manual || !item.service_id) continue;
-    const price = resolveServicePrice(item.service_id, vc.id);
+    const price = resolveServicePrice(item.service_id, vc.id, order.client_id);
+    if (price === null) {
+      db.prepare("DELETE FROM order_items WHERE id = ?").run(item.id);
+    } else {
+      const extra = Math.max(0, item.coefficient_extra_kopecks ?? 0);
+      const discountPercent = clampDiscountPercent(item.discount_percent);
+      const finalPrice = linePriceKopecks(price, extra, discountPercent);
+      db.prepare(
+        `UPDATE order_items SET base_price_kopecks = ?, price_kopecks = ?, coefficient_extra_kopecks = ?,
+         discount_percent = ? WHERE id = ?`
+      ).run(price, finalPrice, extra, discountPercent, item.id);
+    }
+  }
+
+  recalc(orderId);
+  return getOrder(orderId)!;
+}
+
+/** Пересчёт услуг/доп. по классу и тарифу клиента (после привязки клиента). */
+export function repriceOrderCatalogItems(orderId: string) {
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId) as OrderRow | undefined;
+  if (!order || (order.status !== "draft" && order.status !== "awaiting_payment")) {
+    return getOrder(orderId);
+  }
+  const classId = order.vehicle_class_id;
+  if (!classId) return getOrder(orderId)!;
+
+  const items = db
+    .prepare(
+      `SELECT id, service_id, is_manual, coefficient_extra_kopecks, discount_percent
+       FROM order_items WHERE order_id = ?`
+    )
+    .all(orderId) as {
+    id: string;
+    service_id: string | null;
+    is_manual: number;
+    coefficient_extra_kopecks: number;
+    discount_percent: number;
+  }[];
+
+  for (const item of items) {
+    if (item.is_manual || !item.service_id) continue;
+    const price = resolveServicePrice(item.service_id, classId, order.client_id);
     if (price === null) {
       db.prepare("DELETE FROM order_items WHERE id = ?").run(item.id);
     } else {

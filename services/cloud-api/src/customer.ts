@@ -6,6 +6,7 @@ import { enqueueStationOutbox } from "./bookings.js";
 import { getCatalogSnapshot } from "./catalog.js";
 import { formatPhoneDisplay, normalizePhone } from "./phone.js";
 import { parseRfPlate } from "./plate.js";
+import { mskDateString } from "./time.js";
 
 const PRIVACY_VERSION = "2026-08-30";
 const SESSION_DAYS = 30;
@@ -43,7 +44,68 @@ export function initCustomerSchema(db: DatabaseSync) {
     );
 
     CREATE INDEX IF NOT EXISTS idx_vehicles_customer ON vehicles(customer_id);
+
+    CREATE TABLE IF NOT EXISTS customer_tariffs (
+      customer_id TEXT NOT NULL,
+      tariff_id TEXT NOT NULL,
+      PRIMARY KEY (customer_id, tariff_id)
+    );
   `);
+}
+
+export function applyClientTariffsFromStation(
+  db: DatabaseSync,
+  payload: { phone?: string; tariffIds?: string[] }
+) {
+  const phone = normalizePhone(payload.phone ?? "");
+  if (!phone) return;
+  const customer = db
+    .prepare("SELECT id FROM customer_accounts WHERE phone = ?")
+    .get(phone) as { id: string } | undefined;
+  if (!customer) return;
+
+  db.prepare("DELETE FROM customer_tariffs WHERE customer_id = ?").run(customer.id);
+  const insert = db.prepare(
+    "INSERT OR IGNORE INTO customer_tariffs (customer_id, tariff_id) VALUES (?, ?)"
+  );
+  for (const raw of payload.tariffIds ?? []) {
+    const tariffId = String(raw ?? "").trim();
+    if (!tariffId) continue;
+    insert.run(customer.id, tariffId);
+  }
+}
+
+export function listCustomerTariffsForMe(db: DatabaseSync, customerId: string) {
+  const today = mskDateString();
+  const snap = getCatalogSnapshot(db);
+  const assigned = new Set(
+    (
+      db
+        .prepare("SELECT tariff_id FROM customer_tariffs WHERE customer_id = ?")
+        .all(customerId) as { tariff_id: string }[]
+    ).map((r) => r.tariff_id)
+  );
+  if (assigned.size === 0) return [];
+
+  const serviceName = new Map((snap.services ?? []).map((s) => [s.id, s.name]));
+  const className = new Map((snap.vehicleClasses ?? []).map((c) => [c.id, c.name]));
+
+  return (snap.tariffs ?? [])
+    .filter((t) => assigned.has(t.id) && t.active !== false)
+    .filter((t) => t.validFrom <= today && (t.validTo == null || t.validTo >= today))
+    .map((t) => ({
+      id: t.id,
+      name: t.name,
+      validFrom: t.validFrom,
+      validTo: t.validTo,
+      prices: (t.prices ?? []).map((p) => ({
+        serviceId: p.serviceId,
+        classId: p.classId,
+        serviceName: serviceName.get(p.serviceId) ?? p.serviceId,
+        className: className.get(p.classId) ?? p.classId,
+        priceKopecks: p.priceKopecks,
+      })),
+    }));
 }
 
 function bearer(req: { headers: { authorization?: string } }) {
@@ -269,6 +331,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
       phone: c.phone,
       phoneDisplay: formatPhoneDisplay(c.phone),
       name: c.name,
+      tariffs: listCustomerTariffsForMe(db, c.customerId),
     };
   });
 
@@ -292,6 +355,7 @@ export function registerCustomerRoutes(app: FastifyInstance, db: DatabaseSync) {
       phone: c.phone,
       phoneDisplay: formatPhoneDisplay(c.phone),
       name,
+      tariffs: listCustomerTariffsForMe(db, c.customerId),
     };
   });
 

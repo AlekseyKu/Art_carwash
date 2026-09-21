@@ -20,7 +20,9 @@ Outbox → cloud-api, отчёты `/reports`, пароль собственни
 
 Спека: [../pwa/customer-app.md](../pwa/customer-app.md) · ПДн: [../pwa/privacy.md](../pwa/privacy.md) · UI: [../pwa/ui-system.md](../pwa/ui-system.md).
 
-Текущая полировка: контент «О мойке», UX записи/кабинета, видимость услуг в PWA.
+Текущая полировка: режим работы / слоты 30 мин, UX календаря на кассе, скидка % на строку, чип PWA, multi-vehicle на кассе (`client_vehicles`).
+
+**Следующее (spec):** тарифы / спец.цены клиентов — [../pos/tariffs.md](../pos/tariffs.md) (админ + карточка клиента + касса + блок в ЛК PWA).
 
 ## Этап 5 — Лояльность UI · backlog
 

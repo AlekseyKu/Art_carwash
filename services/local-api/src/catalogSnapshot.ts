@@ -1,7 +1,8 @@
 import { db, CLASS_PRICED_TAB_SLUGS, getSetting, listVehicleClasses, resolveServiceDurationMinutes } from "./db.js";
 import { getSiteSchedule } from "./siteSchedule.js";
 import { formatHoursText } from "@art/shared";
-import { enqueueOutbox } from "./sync.js";
+import { enqueueOutbox } from "./outbox.js";
+import { buildTariffsSnapshotPayload } from "./tariffs.js";
 
 const CLASS_PRICED = new Set<string>(CLASS_PRICED_TAB_SLUGS);
 
@@ -62,6 +63,18 @@ export interface CatalogSnapshot {
     serviceId: string;
     classId: string;
     priceKopecks: number;
+  }[];
+  tariffs: {
+    id: string;
+    name: string;
+    validFrom: string;
+    validTo: string | null;
+    active: boolean;
+    prices: {
+      serviceId: string;
+      classId: string;
+      priceKopecks: number;
+    }[];
   }[];
 }
 
@@ -177,6 +190,7 @@ export function buildCatalogSnapshot(): CatalogSnapshot {
     services,
     vehicleClasses,
     servicePrices,
+    tariffs: buildTariffsSnapshotPayload(),
   };
 }
 

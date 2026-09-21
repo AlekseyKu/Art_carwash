@@ -3,6 +3,21 @@ export interface Customer {
   phone: string;
   phoneDisplay: string;
   name: string | null;
+  tariffs?: CustomerTariff[];
+}
+
+export interface CustomerTariff {
+  id: string;
+  name: string;
+  validFrom: string;
+  validTo: string | null;
+  prices: {
+    serviceId: string;
+    classId: string;
+    serviceName: string;
+    className: string;
+    priceKopecks: number;
+  }[];
 }
 
 export interface Vehicle {

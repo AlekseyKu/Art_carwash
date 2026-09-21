@@ -4,7 +4,7 @@
 
 | Файл | Содержание | Статус |
 |------|------------|--------|
-| [customer-app.md](customer-app.md) | Онбординг, прайс, запись, кабинет, sync | shipped (полировка) |
+| [customer-app.md](customer-app.md) | Онбординг, прайс, запись, кабинет, sync, календарь/клиенты на кассе | shipped (полировка) |
 | [privacy.md](privacy.md) | Политика ПДн (`2026-08-30`) | draft |
 | [ui-system.md](ui-system.md) | UI-токены / порт паттернов Cyberdom | shipped |
 

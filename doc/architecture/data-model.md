@@ -75,13 +75,51 @@
 ### order_items
 - `id` TEXT PK
 - `order_id` TEXT
-- `service_id` TEXT
+- `service_id` TEXT NULL (NULL = ручная позиция)
 - `name_snapshot` TEXT
-- `price_kopecks` INTEGER
+- `price_kopecks` INTEGER — итог строки после коэффициента и % скидки
 - `qty` INTEGER
+- `is_manual` INTEGER DEFAULT 0
+- `base_price_kopecks` INTEGER — база для clamp коэффициента
+- `coefficient_extra_kopecks` INTEGER DEFAULT 0
+- `discount_percent` INTEGER DEFAULT 0 — скидка на строку 0…100 (Услуги/Доп.);  
+  `price = round((base + extra) × (100 − pct) / 100)`
 
-### clients / loyalty_accounts
-Задел под лояльность (телефон, госномер, баллы, персональная скидка).
+### clients
+- `id` TEXT PK
+- `name` TEXT NULL
+- `phone` TEXT NULL
+- `plate_number` TEXT NULL — **default**-госномер (совместимость / ANPR shortcut)
+- `notes` TEXT NULL
+- `created_at` / `updated_at` TEXT
+
+Поиск: телефон / имя / **любой** plate из `client_vehicles`.
+
+### client_vehicles
+Гараж на кассе (зеркало cloud `vehicles` через `customer.upsert`).
+- `id` TEXT PK
+- `client_id` TEXT → `clients.id`
+- `plate_number` TEXT (нормализованный)
+- `class_id` TEXT NULL
+- `nickname` TEXT NULL
+- `is_default` INTEGER — ровно одно `1` на клиента; пишется в `clients.plate_number`
+- UNIQUE (`client_id`, `plate_number`)
+
+Миграция: старый одиночный `clients.plate_number` → одна строка `client_vehicles` с `is_default=1`.
+
+### tariffs / tariff_prices / client_tariffs
+Именованные спец.цены (класс × услуга/доп.), период, M:N с клиентами. См. [../pos/tariffs.md](../pos/tariffs.md).
+
+### loyalty_accounts
+Задел под лояльность (баллы, tier, `personal_discount_percent`). UI лояльности — этап 5.
+
+### site_schedule (settings key)
+JSON режима работы по дням недели (MSK): `closed` / `open` / `close`.  
+В snapshot каталога: `site.schedule` + человекочитаемый `hoursText`.  
+Слоты записи (шаг 30 мин) используют дневное окно. См. [../pwa/customer-app.md](../pwa/customer-app.md).
+
+### bookings (local зеркало)
+Записи PWA/кассы; календарь дня, arrive → черновик заказа. Детали в [../pwa/customer-app.md](../pwa/customer-app.md).
 
 ### outbox
 - `id` TEXT PK

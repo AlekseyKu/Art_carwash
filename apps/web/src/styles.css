@@ -616,6 +616,270 @@ a.topbar-pill {
   background: color-mix(in srgb, var(--brand-silver-soft) 40%, white);
 }
 
+.tariffs-admin {
+  --tariffs-control-h: 48px;
+}
+
+.tariffs-admin__head {
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.tariffs-admin__btn {
+  height: var(--tariffs-control-h);
+  min-height: var(--tariffs-control-h);
+  box-sizing: border-box;
+  padding: 0 1rem;
+  font-size: 0.95rem;
+}
+
+.tariffs-admin .table-actions-row > .tariffs-admin__btn {
+  min-height: var(--tariffs-control-h);
+  height: var(--tariffs-control-h);
+  padding: 0 0.85rem;
+}
+
+.tariffs-admin__meta {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.4fr) repeat(2, minmax(9rem, 1fr)) auto;
+  grid-template-rows: auto var(--tariffs-control-h);
+  column-gap: 0.75rem;
+  row-gap: 0.35rem;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .tariffs-admin__meta {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: none;
+  }
+
+  .tariffs-admin__meta-label:nth-child(1) { grid-row: 1; grid-column: 1; }
+  .tariffs-admin__meta-label:nth-child(2) { grid-row: 1; grid-column: 2; }
+  .tariffs-admin__meta-control:nth-child(5) { grid-row: 2; grid-column: 1; }
+  .tariffs-admin__meta-control:nth-child(6) { grid-row: 2; grid-column: 2; }
+  .tariffs-admin__meta-label:nth-child(3) { grid-row: 3; grid-column: 1; }
+  .tariffs-admin__meta-label:nth-child(4) { grid-row: 3; grid-column: 2; }
+  .tariffs-admin__meta-control:nth-child(7) { grid-row: 4; grid-column: 1; }
+  .tariffs-admin__meta-control:nth-child(8) { grid-row: 4; grid-column: 2; }
+}
+
+.tariffs-admin__meta-label {
+  display: flex;
+  align-items: center;
+  height: 1.25rem;
+  line-height: 1.25rem;
+  margin: 0;
+}
+
+.tariffs-admin__meta-label--center {
+  justify-content: center;
+  text-align: center;
+}
+
+.tariffs-admin__meta-control {
+  width: 100%;
+  height: var(--tariffs-control-h);
+  min-height: var(--tariffs-control-h);
+  box-sizing: border-box;
+}
+
+.tariffs-admin__meta input[type="date"].tariffs-admin__meta-control {
+  min-height: var(--tariffs-control-h);
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  font: inherit;
+}
+
+.tariffs-admin__meta-toggle {
+  width: auto;
+  justify-self: center;
+}
+
+.tariffs-admin__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+@media (max-width: 1100px) {
+  .tariffs-admin__split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tariffs-admin--editing {
+  gap: 1rem;
+}
+
+.tariffs-admin__main,
+.tariffs-admin__clients-panel {
+  min-height: 0;
+}
+
+.tariffs-admin__main {
+  gap: 0.75rem;
+}
+
+.tariffs-admin__clients-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0;
+}
+
+.tariffs-admin__field {
+  margin-bottom: 0;
+}
+
+.tariffs-admin__field .touch-field,
+.tariffs-admin__search.touch-field,
+.tariffs-admin__search {
+  height: var(--tariffs-control-h);
+  min-height: var(--tariffs-control-h);
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.tariffs-admin__field input[type="date"] {
+  height: var(--tariffs-control-h);
+  min-height: var(--tariffs-control-h);
+  box-sizing: border-box;
+}
+
+.tariffs-admin__label-with-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.tariffs-admin__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, var(--brand-silver) 80%, #1e1f24);
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.tariffs-admin__info svg {
+  display: block;
+}
+
+.tariffs-admin__info:hover,
+.tariffs-admin__info:focus-visible,
+.tariffs-admin__info[aria-expanded="true"] {
+  color: var(--brand-primary);
+}
+
+.tariffs-admin__info:focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 1px;
+}
+
+.tariffs-admin__hint {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 0.4rem);
+  z-index: 8;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  background: #1e1f24;
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.tariffs-admin__class-row {
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.tariffs-admin__assigned {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.tariffs-admin__assigned-empty {
+  padding: 0.75rem 0;
+}
+
+.tariffs-admin__assigned-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  align-items: start;
+  padding: 0.55rem 0.65rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--brand-silver-soft) 28%, white);
+  border: 1px solid var(--brand-silver-soft);
+}
+
+.tariffs-admin__assigned-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.tariffs-admin__assigned-info strong,
+.tariffs-admin__assigned-info span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tariffs-admin__add-block {
+  margin-top: 0.25rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--brand-silver-soft);
+}
+
+.tariffs-admin__client-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.tariffs-admin__pick-chip {
+  width: 100%;
+}
+
+.tariffs-admin__pick-chip .service-chip-text {
+  text-align: left;
+}
+
+.tariffs-admin__footer {
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -1084,6 +1348,87 @@ a.icon-btn {
   flex-wrap: wrap;
   gap: 0.75rem;
   margin-top: 0.5rem;
+}
+
+/* Поля/кнопки формы клиента — высота как у телефона (.touch-field = 48px). Нижний ряд не трогаем. */
+.clients-form {
+  --clients-control-h: 48px;
+}
+
+.clients-form > .stack .touch-field,
+.clients-form > label .touch-field,
+.clients-form .clients-tariffs .touch-field,
+.clients-form .clients-vehicle-row .touch-field {
+  height: var(--clients-control-h);
+  min-height: var(--clients-control-h);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+}
+
+.clients-form > .stack > .btn-secondary,
+.clients-form .clients-tariffs-btn,
+.clients-form .clients-tariffs-pick-item {
+  height: var(--clients-control-h);
+  min-height: var(--clients-control-h);
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 0.95rem;
+}
+
+.clients-form .clients-vehicle-row .icon-btn {
+  width: var(--clients-control-h);
+  height: var(--clients-control-h);
+  min-width: var(--clients-control-h);
+  min-height: var(--clients-control-h);
+}
+
+.clients-tariffs-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.clients-tariffs-btn {
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.clients-tariffs-btn.active {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+}
+
+.clients-tariffs-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.clients-tariffs-pick-item {
+  width: 100%;
+  box-sizing: border-box;
+  justify-content: flex-start;
+  text-align: left;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+.clients-tariffs-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+
+.clients-tariffs-create .clients-tariffs-btn {
+  width: auto;
+  min-width: 7.5rem;
 }
 
 .clients-vehicle-row {

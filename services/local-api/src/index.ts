@@ -19,6 +19,14 @@ import {
   upsertClient,
 } from "./clients.js";
 import {
+  createTariff,
+  deleteTariff,
+  ensureTariffTables,
+  getTariff,
+  listTariffs,
+  updateTariff,
+} from "./tariffs.js";
+import {
   changeMasterCode,
   deleteSession,
   getSession,
@@ -51,6 +59,7 @@ import {
   listRecentOrders,
   markAwaitingPayment,
   markPaid,
+  repriceOrderCatalogItems,
   setOrderItems,
   setOrderTips,
   setOrderVehicleClass,
@@ -66,7 +75,8 @@ import {
   markBookingArrived,
 } from "./bookings.js";
 import { enqueueCatalogSnapshot } from "./catalogSnapshot.js";
-import { enqueueOutbox, flushOutbox, startSyncLoop } from "./sync.js";
+import { enqueueOutbox } from "./outbox.js";
+import { flushOutbox, startSyncLoop } from "./sync.js";
 import {
   ensureSiteScheduleDefault,
   getSiteSchedule,
@@ -104,6 +114,7 @@ migrate();
 seedIfEmpty();
 ensureSiteScheduleDefault();
 ensureClientTables();
+ensureTariffTables();
 seedDemoClient();
 initLocalBookingSchema();
 
@@ -135,6 +146,14 @@ function requireWasher(req: { headers: { authorization?: string } }) {
 function requireAdmin(req: { headers: { authorization?: string } }) {
   const s = getSession(bearer(req));
   if (!s || s.kind !== "admin") throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+  return s;
+}
+
+function requireWasherOrAdmin(req: { headers: { authorization?: string } }) {
+  const s = getSession(bearer(req));
+  if (!s || (s.kind !== "washer" && s.kind !== "admin")) {
+    throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
+  }
   return s;
 }
 
@@ -264,9 +283,10 @@ function slugifyClassName(name: string): string {
   return base || `class-${nanoid(6)}`;
 }
 
-app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
+app.get<{ Querystring: { classId?: string; clientId?: string } }>("/api/catalog", async (req) => {
   const vehicleClasses = listVehicleClasses(true);
   const classId = req.query.classId || getDefaultVehicleClass().id;
+  const clientId = req.query.clientId?.trim() || null;
 
   const tabs = db
     .prepare(
@@ -294,7 +314,7 @@ app.get<{ Querystring: { classId?: string } }>("/api/catalog", async (req) => {
   const catalogServices = [];
   for (const s of services) {
     if (isClassPricedTabId(s.tab_id)) {
-      const price = resolveServicePrice(s.id, classId);
+      const price = resolveServicePrice(s.id, classId, clientId);
       if (price === null) continue;
       catalogServices.push({
         ...mapServiceRow(s),
@@ -366,7 +386,7 @@ app.get<{ Querystring: { plate: string } }>("/api/clients/by-plate", async (req)
 });
 
 app.get<{ Querystring: { query?: string; limit?: string } }>("/api/clients", async (req) => {
-  requireWasher(req);
+  requireWasherOrAdmin(req);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));
   const query = (req.query.query ?? "").trim();
   const clients = query ? searchClients(query, limit) : listClients(limit);
@@ -386,6 +406,7 @@ app.post<{
       nickname?: string | null;
       isDefault?: boolean;
     }[];
+    tariffIds?: string[];
   };
 }>("/api/clients", async (req) => {
   requireWasher(req);
@@ -508,6 +529,7 @@ app.put<{ Params: { id: string }; Body: { clientId: string | null } }>(
   async (req) => {
     requireWasher(req);
     attachClientToOrder(req.params.id, req.body.clientId);
+    repriceOrderCatalogItems(req.params.id);
     return getOrder(req.params.id);
   }
 );
@@ -1132,6 +1154,59 @@ app.delete<{ Params: { id: string } }>("/api/admin/discounts/:id", async (req) =
   db.prepare("UPDATE orders SET discount_id = NULL WHERE discount_id = ?").run(req.params.id);
   const result = db.prepare("DELETE FROM discounts WHERE id = ?").run(req.params.id);
   if (result.changes === 0) throw new Error("Скидка не найдена");
+  return { ok: true };
+});
+
+app.get("/api/admin/tariffs", async (req) => {
+  requireWasherOrAdmin(req);
+  return listTariffs();
+});
+
+app.get<{ Params: { id: string } }>("/api/admin/tariffs/:id", async (req) => {
+  requireWasherOrAdmin(req);
+  const t = getTariff(req.params.id);
+  if (!t) throw Object.assign(new Error("Тариф не найден"), { statusCode: 404 });
+  return t;
+});
+
+app.post<{
+  Body: {
+    name: string;
+    validFrom: string;
+    validTo?: string | null;
+    active?: boolean;
+    prices?: { serviceId: string; classId: string; priceKopecks: number }[];
+    clientIds?: string[];
+  };
+}>("/api/admin/tariffs", async (req) => {
+  requireWasherOrAdmin(req);
+  const created = createTariff(req.body ?? {});
+  afterCatalogChange();
+  return created;
+});
+
+app.put<{
+  Params: { id: string };
+  Body: {
+    name: string;
+    validFrom: string;
+    validTo?: string | null;
+    active: boolean;
+    prices?: { serviceId: string; classId: string; priceKopecks: number }[];
+    clientIds?: string[];
+  };
+}>("/api/admin/tariffs/:id", async (req) => {
+  requireWasherOrAdmin(req);
+  const updated = updateTariff(req.params.id, req.body ?? {});
+  afterCatalogChange();
+  return updated;
+});
+
+app.delete<{ Params: { id: string } }>("/api/admin/tariffs/:id", async (req) => {
+  requireWasherOrAdmin(req);
+  const ok = deleteTariff(req.params.id);
+  if (!ok) throw Object.assign(new Error("Тариф не найден"), { statusCode: 404 });
+  afterCatalogChange();
   return { ok: true };
 });
 

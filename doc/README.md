@@ -22,9 +22,12 @@
 | Что делать дальше | [product/roadmap.md](product/roadmap.md) |
 | Релиз кассы (exe / GitHub) | [pos/packaging.md](pos/packaging.md), [deploy/pos-release.md](deploy/pos-release.md) |
 | PWA: запись, кабинет, каталог | [pwa/customer-app.md](pwa/customer-app.md) |
+| Касса: заказ, скидки, мойщики | [pos/staff-order-ux.md](pos/staff-order-ux.md) |
+| Модель данных | [architecture/data-model.md](architecture/data-model.md) |
 | Деплой `carwash-jd.ru` | [deploy/vps.md](deploy/vps.md) |
 | Локальный Docker-стенд | [deploy/local-docker.md](deploy/local-docker.md) |
 | Цены по классу авто | [pos/vehicle-classes.md](pos/vehicle-classes.md) |
+| Тарифы / спец.цены | [pos/tariffs.md](pos/tariffs.md) |
 | Бренд АРТ vs «у ЖД» | [product/brand.md](product/brand.md) |
 
 ## Как обновлять

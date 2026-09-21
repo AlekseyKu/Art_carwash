@@ -16,11 +16,13 @@ import {
 } from "../api";
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 import { ShiftReportView } from "../components/ShiftReportView";
+import { TariffsAdminPanel } from "../components/TariffsAdminPanel";
 
 type FixedTab =
   | "vehicle-classes"
   | "service-prices"
   | "discounts"
+  | "tariffs"
   | "washers"
   | "staff-washers"
   | "site-schedule"
@@ -30,7 +32,7 @@ type FixedTab =
   | "updates"
   | "catalog-tabs";
 type Tab = FixedTab | `catalog:${string}`;
-type NavGroupId = "analytics" | "catalog" | "settings" | "admin";
+type NavGroupId = "analytics" | "catalog" | "discounts-tariffs" | "settings" | "admin";
 type AnalyticsMode = "period" | "shifts" | "by-washer";
 type WasherAnalyticsPeriod = "shift" | "week" | "month" | "range";
 
@@ -71,12 +73,14 @@ function formatAnalyticsPeriodLabel(
 const MAIN_NAV: { id: NavGroupId; label: string }[] = [
   { id: "analytics", label: "Аналитика" },
   { id: "catalog", label: "Товары и услуги" },
+  { id: "discounts-tariffs", label: "Скидки и тарифы" },
   { id: "settings", label: "Настройки" },
   { id: "admin", label: "Администрирование" },
 ];
 
 function navGroupForTab(t: Tab): NavGroupId {
   if (t === "analytics") return "analytics";
+  if (t === "discounts" || t === "tariffs") return "discounts-tariffs";
   if (t === "washers" || t === "staff-washers" || t === "site-schedule") return "settings";
   if (t === "updates" || t === "terminal" || t === "security") return "admin";
   return "catalog";
@@ -503,6 +507,10 @@ export function AdminPage() {
         }
         return;
       }
+      if (group === "discounts-tariffs") {
+        if (navGroupForTab(tab) !== "discounts-tariffs") setTab("discounts");
+        return;
+      }
       if (group === "settings") {
         setTab("washers");
         return;
@@ -638,7 +646,6 @@ export function AdminPage() {
     if (products) items.push({ id: `catalog:${products.slug}`, label: products.name });
     for (const ct of others) items.push({ id: `catalog:${ct.slug}`, label: ct.name });
     items.push({ id: "catalog-tabs", label: "Вкладки" });
-    items.push({ id: "discounts", label: "Скидки" });
     return items;
   }, [catalogTabs]);
 
@@ -651,6 +658,12 @@ export function AdminPage() {
       ];
     }
     if (navGroup === "catalog") return catalogSubItems;
+    if (navGroup === "discounts-tariffs") {
+      return [
+        { id: "discounts" as Tab, label: "Скидки" },
+        { id: "tariffs" as Tab, label: "Тарифы" },
+      ];
+    }
     if (navGroup === "settings") {
       return [
         { id: "washers" as Tab, label: "Операторы" },
@@ -1640,6 +1653,17 @@ export function AdminPage() {
               )}
             </div>
           </div>
+        )}
+
+        {tab === "tariffs" && token && (
+          <TariffsAdminPanel
+            token={token}
+            services={services}
+            catalogTabs={catalogTabs}
+            vehicleClasses={vehicleClasses}
+            onError={setError}
+            removeWithConfirm={removeWithConfirm}
+          />
         )}
 
         {tab === "washers" && (

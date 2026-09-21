@@ -299,6 +299,40 @@ export function CabinetPage() {
 
       <FormError message={error} />
 
+      {(customer?.tariffs?.length ?? 0) > 0 && (
+        <section className="garage-section">
+          <div className="garage-section__head">
+            <h2 className="ui-title-sm garage-section__title">Ваш тариф</h2>
+          </div>
+          <ul className="garage-list">
+            {customer!.tariffs!.map((t) => (
+              <li key={t.id}>
+                <Card className="garage-card">
+                  <div className="garage-card__main">
+                    <strong>{t.name}</strong>
+                    <p className="muted" style={{ margin: "0.25rem 0 0" }}>
+                      {t.validTo
+                        ? `${t.validFrom} — ${t.validTo}`
+                        : `с ${t.validFrom}`}
+                    </p>
+                    {t.prices.length > 0 && (
+                      <ul style={{ margin: "0.75rem 0 0", paddingLeft: "1.1rem" }}>
+                        {t.prices.map((p) => (
+                          <li key={`${p.serviceId}:${p.classId}`}>
+                            {p.serviceName} · {p.className} —{" "}
+                            {(p.priceKopecks / 100).toLocaleString("ru-RU")} ₽
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section className="garage-section">
         <div className="garage-section__head">
           <h2 className="ui-title-sm garage-section__title">Гараж</h2>

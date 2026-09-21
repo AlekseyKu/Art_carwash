@@ -322,7 +322,7 @@ export function PosPage() {
   useEffect(() => {
     if (!token) return;
     api
-      .catalog(vehicleClassId ?? undefined)
+      .catalog(vehicleClassId ?? undefined, order?.clientId ?? undefined)
       .then((c) => {
         const tabs = c.tabs ?? [];
         setCatalog({
@@ -344,7 +344,7 @@ export function PosPage() {
         if (isUnauthorized(e)) forceLogout(e.message);
         else setError(e.message);
       });
-  }, [token, vehicleClassId]);
+  }, [token, vehicleClassId, order?.clientId]);
 
   const catalogItems = useMemo(() => {
     if (!catalog) return [];
@@ -1901,6 +1901,9 @@ function ClientSearchControl({
                   : attached.plateNumber) ?? "—"}
                 {attached.name ? ` · ${attached.name}` : ""}
                 {attached.phone ? ` · ${attached.phone}` : ""}
+                {attached.activeTariffNames?.length
+                  ? ` · ${attached.activeTariffNames.join(", ")}`
+                  : ""}
               </span>
               <button type="button" className="client-search__clear" onClick={onClearAttached}>
                 ×
