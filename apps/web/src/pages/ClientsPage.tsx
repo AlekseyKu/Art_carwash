@@ -11,14 +11,40 @@ import {
 import { TouchField, TouchKeyboardProvider } from "../components/OnScreenKeyboard";
 import { WindowControls } from "../components/WindowControls";
 
+type DraftVehicle = {
+  key: string;
+  id?: string;
+  plate: string;
+  isDefault: boolean;
+};
+
 type Draft = {
   id?: string;
   name: string;
   phone: string;
-  plate: string;
+  vehicles: DraftVehicle[];
 };
 
-const emptyDraft = (): Draft => ({ name: "", phone: "", plate: "" });
+function newVehicleKey() {
+  return `v-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+const emptyDraft = (): Draft => ({
+  name: "",
+  phone: "",
+  vehicles: [{ key: newVehicleKey(), plate: "", isDefault: true }],
+});
+
+function platesLabel(c: ClientDto): string {
+  const plates =
+    c.vehicles?.length > 0
+      ? c.vehicles.map((v) => v.plateNumber)
+      : c.plateNumber
+        ? [c.plateNumber]
+        : [];
+  if (!plates.length) return "без номера";
+  return plates.join(" · ");
+}
 
 export function ClientsPage() {
   const [token, setToken] = useState(getWasherToken());
@@ -28,6 +54,7 @@ export function ClientsPage() {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState<Draft>(() => emptyDraft());
   const [saving, setSaving] = useState(false);
+
   async function reload(q = query) {
     if (!token) return;
     setLoading(true);
@@ -64,13 +91,53 @@ export function ClientsPage() {
   }
 
   function openEdit(c: ClientDto) {
+    const vehicles =
+      c.vehicles?.length > 0
+        ? c.vehicles.map((v) => ({
+            key: v.id,
+            id: v.id,
+            plate: v.plateNumber,
+            isDefault: v.isDefault,
+          }))
+        : [
+            {
+              key: newVehicleKey(),
+              plate: c.plateNumber ?? "",
+              isDefault: true,
+            },
+          ];
     setDraft({
       id: c.id,
       name: c.name ?? "",
       phone: c.phone ?? "",
-      plate: c.plateNumber ?? "",
+      vehicles,
     });
     setError("");
+  }
+
+  function addVehicle() {
+    setDraft((d) => ({
+      ...d,
+      vehicles: [...d.vehicles, { key: newVehicleKey(), plate: "", isDefault: false }],
+    }));
+  }
+
+  function removeVehicle(key: string) {
+    setDraft((d) => {
+      const next = d.vehicles.filter((v) => v.key !== key);
+      if (!next.length) {
+        return { ...d, vehicles: [{ key: newVehicleKey(), plate: "", isDefault: true }] };
+      }
+      if (!next.some((v) => v.isDefault)) next[0].isDefault = true;
+      return { ...d, vehicles: next };
+    });
+  }
+
+  function setDefaultVehicle(key: string) {
+    setDraft((d) => ({
+      ...d,
+      vehicles: d.vehicles.map((v) => ({ ...v, isDefault: v.key === key })),
+    }));
   }
 
   async function onSave(e: React.FormEvent) {
@@ -79,12 +146,26 @@ export function ClientsPage() {
     setSaving(true);
     setError("");
     try {
+      const vehicles = draft.vehicles
+        .map((v) => ({
+          id: v.id,
+          plateNumber: v.plate.trim(),
+          isDefault: v.isDefault,
+        }))
+        .filter((v) => v.plateNumber);
+      if (!vehicles.length) {
+        setError("Укажите хотя бы один госномер");
+        setSaving(false);
+        return;
+      }
+      if (!vehicles.some((v) => v.isDefault)) vehicles[0].isDefault = true;
+
       await api.upsertClient(
         {
           id: draft.id,
           name: draft.name.trim() || undefined,
           phone: draft.phone.trim() || undefined,
-          plate: draft.plate.trim() || undefined,
+          vehicles,
         },
         token
       );
@@ -160,13 +241,14 @@ export function ClientsPage() {
                       className={`clients-row${draft.id === c.id ? " active" : ""}`}
                       onClick={() => openEdit(c)}
                     >
-                      <strong>{c.plateNumber ?? "без номера"}</strong>
+                      <strong>{platesLabel(c)}</strong>
                       <span>{[c.name, c.phone].filter(Boolean).join(" · ") || "—"}</span>
                       <span className="muted">
                         визитов: {c.visitCount}
                         {c.lastVisitAt
                           ? ` · ${new Date(c.lastVisitAt).toLocaleDateString("ru-RU")}`
                           : ""}
+                        {c.vehicles?.length > 1 ? ` · авто: ${c.vehicles.length}` : ""}
                       </span>
                     </button>
                   </li>
@@ -182,14 +264,47 @@ export function ClientsPage() {
             <section className="panel clients-form-panel">
               <h2 className="h2">{draft.id ? "Редактировать" : "Новый клиент"}</h2>
               <form className="stack" onSubmit={onSave}>
-                <label className="stack" style={{ gap: 4 }}>
-                  <span className="muted">Госномер</span>
-                  <TouchField
-                    value={draft.plate}
-                    onChange={(plate) => setDraft((d) => ({ ...d, plate: plate.toUpperCase() }))}
-                    placeholder="А170РТ90"
-                  />
-                </label>
+                <div className="stack" style={{ gap: 8 }}>
+                  <span className="muted">Автомобили</span>
+                  {draft.vehicles.map((v) => (
+                    <div key={v.key} className="clients-vehicle-row">
+                      <TouchField
+                        value={v.plate}
+                        onChange={(plate) =>
+                          setDraft((d) => ({
+                            ...d,
+                            vehicles: d.vehicles.map((x) =>
+                              x.key === v.key ? { ...x, plate: plate.toUpperCase() } : x
+                            ),
+                          }))
+                        }
+                        placeholder="А170РТ90"
+                      />
+                      <label className="clients-vehicle-default">
+                        <input
+                          type="radio"
+                          name="default-vehicle"
+                          checked={v.isDefault}
+                          onChange={() => setDefaultVehicle(v.key)}
+                        />
+                        <span>осн.</span>
+                      </label>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        aria-label="Удалить авто"
+                        title="Удалить"
+                        disabled={draft.vehicles.length <= 1}
+                        onClick={() => removeVehicle(v.key)}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn-secondary" onClick={addVehicle}>
+                    + Авто
+                  </button>
+                </div>
                 <label className="stack" style={{ gap: 4 }}>
                   <span className="muted">Телефон</span>
                   <TouchField
@@ -208,7 +323,11 @@ export function ClientsPage() {
                   />
                 </label>
                 <div className="clients-form-actions">
-                  <button type="button" className="btn-secondary" onClick={() => setDraft(emptyDraft())}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => setDraft(emptyDraft())}
+                  >
                     {draft.id ? "Отмена" : "Очистить"}
                   </button>
                   {draft.id && (

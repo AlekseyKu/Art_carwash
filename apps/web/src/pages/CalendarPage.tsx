@@ -1,6 +1,6 @@
 import { formatRub } from "@art/shared";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   api,
   getWasherToken,
@@ -130,14 +130,21 @@ function durationOf(s: CatalogItemDto, fallback: number) {
 
 export function CalendarPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const token = getWasherToken();
-  const [date, setDate] = useState(mskToday());
+  const initialDate = (() => {
+    const q = searchParams.get("date")?.trim() ?? "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(q) ? q : mskToday();
+  })();
+  const [date, setDate] = useState(initialDate);
   const [slots, setSlots] = useState<
     { time: string; startsAt: string; booking: BookingDto | null }[]
   >([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => searchParams.get("booking")?.trim() || null
+  );
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [servicePicker, setServicePicker] = useState<"main" | "addons" | null>(null);
 
@@ -649,8 +656,15 @@ export function CalendarPage() {
                             className="btn-secondary"
                             onClick={() => pickClient(c)}
                           >
-                            {[c.plateNumber, c.name, c.phone].filter(Boolean).join(" · ") ||
-                              c.id}
+                            {[
+                              (c.vehicles?.length
+                                ? c.vehicles.map((v) => v.plateNumber).join(" · ")
+                                : c.plateNumber) || null,
+                              c.name,
+                              c.phone,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || c.id}
                           </button>
                         </li>
                       ))}

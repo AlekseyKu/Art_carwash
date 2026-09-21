@@ -1,9 +1,18 @@
 import { nanoid } from "nanoid";
 import { db } from "./db.js";
 
+export type ClientVehicleDto = {
+  id: string;
+  plateNumber: string;
+  classId: string | null;
+  nickname: string | null;
+  isDefault: boolean;
+};
+
 export type ClientDto = {
   id: string;
   phone: string | null;
+  /** Госномер по умолчанию (для совместимости). */
   plateNumber: string | null;
   name: string | null;
   points: number;
@@ -11,6 +20,7 @@ export type ClientDto = {
   personalDiscountPercent: number;
   visitCount: number;
   lastVisitAt: string | null;
+  vehicles: ClientVehicleDto[];
 };
 
 export type AnprEventDto = {
@@ -22,6 +32,21 @@ export type AnprEventDto = {
   source: string;
   createdAt: string;
   client: ClientDto | null;
+};
+
+type ClientRow = {
+  id: string;
+  phone: string | null;
+  plate_number: string | null;
+  name: string | null;
+};
+
+type VehicleInput = {
+  id?: string;
+  plateNumber: string;
+  classId?: string | null;
+  nickname?: string | null;
+  isDefault?: boolean;
 };
 
 /** Нормализация госномера РФ: без пробелов/дефисов, upper. */
@@ -61,6 +86,18 @@ export function ensureClientTables() {
       created_at TEXT NOT NULL
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS client_vehicles (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+      plate_number TEXT NOT NULL,
+      class_id TEXT,
+      nickname TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+  `);
   try {
     db.exec("CREATE INDEX IF NOT EXISTS idx_clients_plate ON clients(plate_number)");
   } catch {
@@ -72,6 +109,38 @@ export function ensureClientTables() {
     );
   } catch {
     /* ignore */
+  }
+  try {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_client_vehicles_client_plate ON client_vehicles(client_id, plate_number)"
+    );
+  } catch {
+    /* ignore */
+  }
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_client_vehicles_plate ON client_vehicles(plate_number)");
+  } catch {
+    /* ignore */
+  }
+
+  // Миграция: один plate_number → client_vehicles
+  const orphans = db
+    .prepare(
+      `SELECT id, plate_number FROM clients
+       WHERE plate_number IS NOT NULL AND trim(plate_number) != ''
+         AND NOT EXISTS (SELECT 1 FROM client_vehicles WHERE client_id = clients.id)`
+    )
+    .all() as { id: string; plate_number: string }[];
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT INTO client_vehicles
+      (id, client_id, plate_number, class_id, nickname, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, NULL, 1, ?, ?)`
+  );
+  for (const row of orphans) {
+    const plate = normalizePlate(row.plate_number);
+    if (!plate) continue;
+    insert.run(nanoid(), row.id, plate, now, now);
   }
 }
 
@@ -85,12 +154,96 @@ function visitStats(clientId: string): { visitCount: number; lastVisitAt: string
   return { visitCount: row.c, lastVisitAt: row.last_at };
 }
 
-export function mapClient(row: {
-  id: string;
-  phone: string | null;
-  plate_number: string | null;
-  name: string | null;
-}): ClientDto {
+function listVehiclesForClient(clientId: string): ClientVehicleDto[] {
+  const rows = db
+    .prepare(
+      `SELECT id, plate_number, class_id, nickname, is_default
+       FROM client_vehicles WHERE client_id = ?
+       ORDER BY is_default DESC, created_at ASC`
+    )
+    .all(clientId) as {
+    id: string;
+    plate_number: string;
+    class_id: string | null;
+    nickname: string | null;
+    is_default: number;
+  }[];
+  return rows.map((r) => ({
+    id: r.id,
+    plateNumber: r.plate_number,
+    classId: r.class_id,
+    nickname: r.nickname,
+    isDefault: !!r.is_default,
+  }));
+}
+
+function replaceClientVehicles(clientId: string, vehicles: VehicleInput[]): ClientVehicleDto[] {
+  const now = new Date().toISOString();
+  db.prepare("DELETE FROM client_vehicles WHERE client_id = ?").run(clientId);
+
+  const normalized: {
+    id: string;
+    plate: string;
+    classId: string | null;
+    nickname: string | null;
+    isDefault: boolean;
+  }[] = [];
+  const seenPlates = new Set<string>();
+  for (const v of vehicles) {
+    const plate = normalizePlate(v.plateNumber ?? "");
+    if (!plate || seenPlates.has(plate)) continue;
+    seenPlates.add(plate);
+    normalized.push({
+      id: v.id?.trim() || nanoid(),
+      plate,
+      classId: v.classId ?? null,
+      nickname: v.nickname?.trim() || null,
+      isDefault: Boolean(v.isDefault),
+    });
+  }
+
+  if (normalized.length > 0 && !normalized.some((v) => v.isDefault)) {
+    normalized[0].isDefault = true;
+  } else if (normalized.length > 0) {
+    let found = false;
+    for (const v of normalized) {
+      if (v.isDefault && !found) {
+        found = true;
+      } else {
+        v.isDefault = false;
+      }
+    }
+  }
+
+  const insert = db.prepare(
+    `INSERT INTO client_vehicles
+      (id, client_id, plate_number, class_id, nickname, is_default, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (const v of normalized) {
+    insert.run(
+      v.id,
+      clientId,
+      v.plate,
+      v.classId,
+      v.nickname,
+      v.isDefault ? 1 : 0,
+      now,
+      now
+    );
+  }
+
+  const defaultPlate = normalized.find((v) => v.isDefault)?.plate ?? normalized[0]?.plate ?? null;
+  db.prepare("UPDATE clients SET plate_number = ?, updated_at = ? WHERE id = ?").run(
+    defaultPlate,
+    now,
+    clientId
+  );
+
+  return listVehiclesForClient(clientId);
+}
+
+export function mapClient(row: ClientRow): ClientDto {
   const loyalty = db
     .prepare(
       "SELECT points, tier, personal_discount_percent FROM loyalty_accounts WHERE client_id = ?"
@@ -99,36 +252,43 @@ export function mapClient(row: {
     | { points: number; tier: string; personal_discount_percent: number }
     | undefined;
   const visits = visitStats(row.id);
+  const vehicles = listVehiclesForClient(row.id);
+  const defaultPlate =
+    vehicles.find((v) => v.isDefault)?.plateNumber ??
+    vehicles[0]?.plateNumber ??
+    row.plate_number;
   return {
     id: row.id,
     phone: row.phone,
-    plateNumber: row.plate_number,
+    plateNumber: defaultPlate,
     name: row.name,
     points: loyalty?.points ?? 0,
     tier: loyalty?.tier ?? "standard",
     personalDiscountPercent: loyalty?.personal_discount_percent ?? 0,
     visitCount: visits.visitCount,
     lastVisitAt: visits.lastVisitAt,
+    vehicles,
   };
 }
 
 export function findClientByPlate(plateRaw: string): ClientDto | null {
   const plate = normalizePlate(plateRaw);
   if (!plate) return null;
+  const byVehicle = db
+    .prepare("SELECT client_id FROM client_vehicles WHERE plate_number = ? LIMIT 1")
+    .get(plate) as { client_id: string } | undefined;
+  if (byVehicle) return findClientById(byVehicle.client_id);
+
   const row = db
     .prepare("SELECT id, phone, plate_number, name FROM clients WHERE plate_number = ?")
-    .get(plate) as
-    | { id: string; phone: string | null; plate_number: string | null; name: string | null }
-    | undefined;
+    .get(plate) as ClientRow | undefined;
   return row ? mapClient(row) : null;
 }
 
 export function findClientById(id: string): ClientDto | null {
   const row = db
     .prepare("SELECT id, phone, plate_number, name FROM clients WHERE id = ?")
-    .get(id) as
-    | { id: string; phone: string | null; plate_number: string | null; name: string | null }
-    | undefined;
+    .get(id) as ClientRow | undefined;
   return row ? mapClient(row) : null;
 }
 
@@ -144,12 +304,12 @@ function findClientRowByPhone(phone: string): { id: string } | undefined {
     .get(`%${last10}`) as { id: string } | undefined;
 }
 
-/** Применить customer.upsert из cloud (телефон, имя, номер по умолчанию). */
+/** Применить customer.upsert из cloud (телефон, имя, все авто). */
 export function upsertClientFromCloud(payload: {
   id: string;
   phone: string;
   name: string | null;
-  vehicles?: { plateNumber: string; isDefault?: boolean }[];
+  vehicles?: VehicleInput[];
 }): ClientDto {
   const now = new Date().toISOString();
   const vehicles = payload.vehicles ?? [];
@@ -163,6 +323,7 @@ export function upsertClientFromCloud(payload: {
     db.prepare(
       `UPDATE clients SET phone = ?, plate_number = ?, name = ?, updated_at = ? WHERE id = ?`
     ).run(phone, plate ?? existing.plateNumber, name, now, id);
+    replaceClientVehicles(id, vehicles);
     return findClientById(id)!;
   };
 
@@ -184,6 +345,7 @@ export function upsertClientFromCloud(payload: {
   db.prepare(
     `INSERT INTO loyalty_accounts (client_id, points, tier, personal_discount_percent) VALUES (?, 0, 'standard', 0)`
   ).run(payload.id);
+  replaceClientVehicles(payload.id, vehicles);
   return findClientById(payload.id)!;
 }
 
@@ -199,19 +361,18 @@ export function searchClients(queryRaw: string, limit = 20): ClientDto[] {
 
   const contactRows = db
     .prepare(
-      `SELECT id, phone, plate_number, name FROM clients
+      `SELECT DISTINCT c.id, c.phone, c.plate_number, c.name FROM clients c
+       LEFT JOIN client_vehicles cv ON cv.client_id = c.id
        WHERE
-         (? IS NOT NULL AND replace(replace(replace(coalesce(phone,''),'+',''),' ',''),'-','') LIKE ?)
-         OR (? IS NOT NULL AND plate_number LIKE ?)
-       ORDER BY updated_at DESC
+         (? IS NOT NULL AND replace(replace(replace(coalesce(c.phone,''),'+',''),' ',''),'-','') LIKE ?)
+         OR (? IS NOT NULL AND (
+           c.plate_number LIKE ?
+           OR cv.plate_number LIKE ?
+         ))
+       ORDER BY c.updated_at DESC
        LIMIT ?`
     )
-    .all(phoneLike, phoneLike, plateLike, plateLike, limit) as {
-    id: string;
-    phone: string | null;
-    plate_number: string | null;
-    name: string | null;
-  }[];
+    .all(phoneLike, phoneLike, plateLike, plateLike, plateLike, limit) as ClientRow[];
 
   const nameTokens = q
     .toLocaleLowerCase("ru-RU")
@@ -228,12 +389,7 @@ export function searchClients(queryRaw: string, limit = 20): ClientDto[] {
          ORDER BY updated_at DESC
          LIMIT 500`
       )
-      .all() as {
-      id: string;
-      phone: string | null;
-      plate_number: string | null;
-      name: string | null;
-    }[];
+      .all() as ClientRow[];
 
     for (const row of candidates) {
       const nameLc = (row.name ?? "").toLocaleLowerCase("ru-RU");
@@ -261,12 +417,7 @@ export function listClients(limit = 100): ClientDto[] {
        ORDER BY updated_at DESC
        LIMIT ?`
     )
-    .all(limit) as {
-    id: string;
-    phone: string | null;
-    plate_number: string | null;
-    name: string | null;
-  }[];
+    .all(limit) as ClientRow[];
   return rows.map(mapClient);
 }
 
@@ -274,6 +425,7 @@ export function deleteClient(id: string): boolean {
   const existing = findClientById(id);
   if (!existing) return false;
   db.prepare("UPDATE orders SET client_id = NULL WHERE client_id = ?").run(id);
+  db.prepare("DELETE FROM client_vehicles WHERE client_id = ?").run(id);
   db.prepare("DELETE FROM loyalty_accounts WHERE client_id = ?").run(id);
   db.prepare("DELETE FROM clients WHERE id = ?").run(id);
   return true;
@@ -284,22 +436,45 @@ export function upsertClient(input: {
   phone?: string;
   name?: string;
   id?: string;
+  vehicles?: VehicleInput[];
 }): ClientDto {
   const now = new Date().toISOString();
   const plate = input.plate ? normalizePlate(input.plate) : null;
+  const vehiclesInput =
+    input.vehicles && input.vehicles.length > 0
+      ? input.vehicles
+      : plate
+        ? [{ plateNumber: plate, isDefault: true }]
+        : null;
 
   if (input.id) {
     const existing = findClientById(input.id);
     if (!existing) throw new Error("Клиент не найден");
+    const nextPlate =
+      vehiclesInput && vehiclesInput.length > 0
+        ? normalizePlate(
+            (vehiclesInput.find((v) => v.isDefault) ?? vehiclesInput[0]).plateNumber
+          ) || existing.plateNumber
+        : (plate ?? existing.plateNumber);
     db.prepare(
       `UPDATE clients SET phone = ?, plate_number = ?, name = ?, updated_at = ? WHERE id = ?`
     ).run(
       input.phone ?? existing.phone,
-      plate ?? existing.plateNumber,
+      nextPlate,
       input.name ?? existing.name,
       now,
       input.id
     );
+    if (vehiclesInput) replaceClientVehicles(input.id, vehiclesInput);
+    else if (plate && existing.vehicles.length === 0) {
+      replaceClientVehicles(input.id, [{ plateNumber: plate, isDefault: true }]);
+    } else if (plate && existing.vehicles.length > 0) {
+      // обновить default plate в списке, если прислали только plate
+      const next = existing.vehicles.map((v) =>
+        v.isDefault ? { ...v, plateNumber: plate } : v
+      );
+      replaceClientVehicles(input.id, next);
+    }
     return findClientById(input.id)!;
   }
 
@@ -309,6 +484,7 @@ export function upsertClient(input: {
       db.prepare(
         `UPDATE clients SET phone = COALESCE(?, phone), name = COALESCE(?, name), updated_at = ? WHERE id = ?`
       ).run(input.phone ?? null, input.name ?? null, now, byPlate.id);
+      if (vehiclesInput) replaceClientVehicles(byPlate.id, vehiclesInput);
       return findClientById(byPlate.id)!;
     }
   }
@@ -320,6 +496,8 @@ export function upsertClient(input: {
   db.prepare(
     `INSERT INTO loyalty_accounts (client_id, points, tier, personal_discount_percent) VALUES (?, 0, 'standard', 0)`
   ).run(id);
+  if (vehiclesInput) replaceClientVehicles(id, vehiclesInput);
+  else if (plate) replaceClientVehicles(id, [{ plateNumber: plate, isDefault: true }]);
   return findClientById(id)!;
 }
 
@@ -347,7 +525,6 @@ export function recordAnprEvent(input: {
     createdAt
   );
 
-  // Автосоздание карточки «незнакомый номер», чтобы касса сразу видела номер
   let client = findClientByPlate(plateNormalized);
   if (!client) {
     client = upsertClient({ plate: plateNormalized });

@@ -132,6 +132,12 @@ export const api = {
       }[];
       bookings: BookingDto[];
     }>(`/api/bookings?date=${encodeURIComponent(date)}`, { token }),
+  pwaBookingSummary: (token: string) =>
+    request<{
+      next: BookingDto | null;
+      upcomingCount: number;
+      latestCreatedAt: string | null;
+    }>("/api/bookings/pwa-summary", { token }),
   cancelBooking: (token: string, id: string) =>
     request<BookingDto>(`/api/bookings/${id}/cancel`, {
       method: "POST",
@@ -245,7 +251,19 @@ export const api = {
   listClients: (token: string, limit = 100) =>
     request<{ clients: ClientDto[] }>(`/api/clients?limit=${limit}`, { token }),
   upsertClient: (
-    body: { plate?: string; phone?: string; name?: string; id?: string },
+    body: {
+      plate?: string;
+      phone?: string;
+      name?: string;
+      id?: string;
+      vehicles?: {
+        id?: string;
+        plateNumber: string;
+        classId?: string | null;
+        nickname?: string | null;
+        isDefault?: boolean;
+      }[];
+    },
     token: string
   ) => request<ClientDto>("/api/clients", { method: "POST", body: JSON.stringify(body), token }),
   deleteClient: (id: string, token: string) =>
@@ -324,6 +342,14 @@ export type ShiftReportDto = {
   }[];
 };
 
+export type ClientVehicleDto = {
+  id: string;
+  plateNumber: string;
+  classId: string | null;
+  nickname: string | null;
+  isDefault: boolean;
+};
+
 export type ClientDto = {
   id: string;
   phone: string | null;
@@ -334,6 +360,7 @@ export type ClientDto = {
   personalDiscountPercent: number;
   visitCount: number;
   lastVisitAt: string | null;
+  vehicles: ClientVehicleDto[];
 };
 
 export type BookingDto = {
@@ -379,6 +406,7 @@ export type OrderItemInput = {
   priceKopecks?: number;
   basePriceKopecks?: number;
   coefficientExtraKopecks?: number;
+  discountPercent?: number;
   isManual?: boolean;
 };
 
@@ -406,6 +434,7 @@ export type OrderDto = {
     isManual?: boolean;
     basePriceKopecks?: number;
     coefficientExtraKopecks?: number;
+    discountPercent?: number;
   }[];
 };
 

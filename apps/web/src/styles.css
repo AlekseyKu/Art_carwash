@@ -38,6 +38,7 @@ body {
     radial-gradient(ellipse 60% 40% at 100% 0%, rgba(169, 169, 169, 0.25), transparent),
     var(--surface);
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button,
@@ -54,6 +55,7 @@ button {
   padding: 0.75rem 1.25rem;
   font-weight: 600;
   transition: transform 0.12s ease, background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button:active:not(:disabled) {
@@ -474,6 +476,14 @@ a.topbar-pill {
   flex-shrink: 0;
 }
 
+.pos-toolbar-primary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .catalog-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -769,7 +779,7 @@ a.topbar-pill {
   align-items: center;
   gap: 0.45rem;
   flex-wrap: wrap;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -812,6 +822,76 @@ a.topbar-pill {
 
 .vehicle-class-info-btn {
   margin-left: 0.15rem;
+}
+
+.pwa-next-chip {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.05rem;
+  min-height: var(--pos-toolbar-size);
+  height: var(--pos-toolbar-size);
+  min-width: 8rem;
+  flex: 1 1 auto;
+  width: auto;
+  max-width: none;
+  padding: 0.35rem 0.85rem 0.35rem 0.75rem;
+  margin-left: 0.25rem;
+  border-radius: 14px;
+  border: 2px solid var(--brand-silver-soft);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  line-height: 1.15;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.pwa-next-chip:focus,
+.pwa-next-chip:focus-visible {
+  outline: none;
+}
+
+.pwa-next-chip--new {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+.pwa-next-chip--empty {
+  color: var(--muted);
+}
+
+.pwa-next-chip__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.pwa-next-chip--new .pwa-next-chip__label {
+  color: var(--brand-primary);
+}
+
+.pwa-next-chip__value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pwa-next-chip__badge {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 0 2px #fff;
 }
 
 .pos-toolbar-nav {
@@ -1006,6 +1086,29 @@ a.icon-btn {
   margin-top: 0.5rem;
 }
 
+.clients-vehicle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.clients-vehicle-default {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.clients-vehicle-default input {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--brand-primary);
+}
+
 .class-info-list {
   list-style: none;
   margin: 0;
@@ -1066,6 +1169,26 @@ a.icon-btn {
 }
 
 @media (min-width: 900px) {
+  .pos-toolbar {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 1rem;
+    align-items: center;
+    flex-wrap: nowrap;
+  }
+
+  .pos-toolbar-primary {
+    flex: initial;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .pos-toolbar-nav {
+    margin-left: 0;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
   .pos-layout {
     display: grid;
     grid-template-columns: 1.4fr 1fr;
@@ -1105,14 +1228,55 @@ a.icon-btn {
 }
 
 .pos-cart-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.75rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem 0.5rem;
+  align-items: start;
   padding: 0.55rem 0.65rem;
   border-radius: 12px;
   background: color-mix(in srgb, var(--brand-silver-soft) 28%, white);
   border: 1px solid var(--brand-silver-soft);
+}
+
+.pos-cart-line--open {
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 6%, white);
+}
+
+.pos-cart-line-main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem;
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  grid-column: 1;
+}
+
+.pos-cart-line-main:disabled {
+  cursor: default;
+}
+
+.pos-cart-line-main--tap {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.pos-cart-line-main--tap:focus,
+.pos-cart-line-main--tap:focus-visible {
+  outline: none;
+}
+
+.pos-cart-line-main--tap:active {
+  opacity: 0.92;
 }
 
 .pos-cart-line-text {
@@ -1120,6 +1284,7 @@ a.icon-btn {
   flex-direction: column;
   gap: 0.15rem;
   min-width: 0;
+  flex: 1;
 }
 
 .pos-cart-line-name {
@@ -1141,6 +1306,12 @@ a.icon-btn {
   font-size: 0.8rem;
   color: var(--muted);
   font-weight: 600;
+}
+
+.pos-cart-line-discount-badge {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--brand-primary);
 }
 
 .pos-cart-coeff-controls {
@@ -1180,8 +1351,13 @@ a.icon-btn {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.35rem;
+  gap: 0.15rem;
   flex-shrink: 0;
+}
+
+.pos-cart-line-was {
+  font-size: 0.78rem;
+  text-decoration: line-through;
 }
 
 .pos-cart-line-sum {
@@ -1190,6 +1366,8 @@ a.icon-btn {
 }
 
 .pos-cart-line-remove {
+  grid-column: 2;
+  grid-row: 1;
   width: 1.75rem;
   height: 1.75rem;
   border: none;
@@ -1204,6 +1382,82 @@ a.icon-btn {
 .pos-cart-line-remove:hover {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 10%, white);
+}
+
+.pos-cart-line-discount {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding-top: 0.25rem;
+}
+
+.pos-cart-line-discount-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 0.9fr)) minmax(0, 1.25fr);
+  gap: 0.4rem;
+  width: 100%;
+}
+
+.pos-cart-disc-chip {
+  min-height: 2.35rem;
+  height: 2.35rem;
+  width: 100%;
+  padding: 0 0.25rem;
+  border-radius: 12px;
+  border: 1px solid var(--brand-silver-soft);
+  background: #fff;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.pos-cart-disc-chip:focus,
+.pos-cart-disc-chip:focus-visible {
+  outline: none;
+}
+
+.pos-cart-disc-chip.active {
+  border-color: var(--brand-primary);
+  color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 10%, white);
+}
+
+.pos-cart-line-discount-manual {
+  display: grid;
+  grid-template-columns: auto 3.75rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.45rem;
+  width: 100%;
+}
+
+.pos-cart-line-discount-manual > .muted {
+  white-space: nowrap;
+}
+
+.pos-cart-line-discount-manual .touch-field,
+.pos-cart-line-discount-manual .touch-field-input {
+  width: 100%;
+  min-height: 2.35rem !important;
+  height: 2.35rem;
+  padding-top: 0;
+  padding-bottom: 0;
+  box-sizing: border-box;
+}
+
+.pos-cart-line-discount-manual > button.btn-secondary {
+  width: 100%;
+  min-height: 2.35rem;
+  height: 2.35rem;
+  padding: 0 0.75rem;
+  margin: 0 0 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .pos-cart-staff-chips {

@@ -37,6 +37,7 @@ export type OrderItemInput = {
   priceKopecks?: number;
   basePriceKopecks?: number;
   coefficientExtraKopecks?: number;
+  discountPercent?: number;
   isManual?: boolean;
 };
 
@@ -50,7 +51,20 @@ type ItemRow = {
   is_manual?: number;
   base_price_kopecks?: number | null;
   coefficient_extra_kopecks?: number;
+  discount_percent?: number;
 };
+
+function clampDiscountPercent(raw: unknown): number {
+  const n = Math.round(Number(raw) || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+}
+
+function linePriceKopecks(base: number, extra: number, discountPercent: number): number {
+  const gross = Math.max(0, base) + Math.max(0, extra);
+  const pct = clampDiscountPercent(discountPercent);
+  return Math.round((gross * (100 - pct)) / 100);
+}
 
 function mapOrder(row: OrderRow) {
   const items = db
@@ -95,6 +109,7 @@ function mapOrder(row: OrderRow) {
       const isManual = !!i.is_manual || !i.service_id;
       const base = i.base_price_kopecks ?? i.price_kopecks;
       const extra = i.coefficient_extra_kopecks ?? 0;
+      const discountPercent = clampDiscountPercent(i.discount_percent);
       return {
         id: i.id,
         orderId: i.order_id,
@@ -105,6 +120,7 @@ function mapOrder(row: OrderRow) {
         isManual,
         basePriceKopecks: base,
         coefficientExtraKopecks: extra,
+        discountPercent,
       };
     }),
   };
@@ -246,19 +262,21 @@ export function setOrderItems(
   const insert = db.prepare(
     `INSERT INTO order_items (
       id, order_id, service_id, name_snapshot, price_kopecks, qty,
-      is_manual, base_price_kopecks, coefficient_extra_kopecks
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      is_manual, base_price_kopecks, coefficient_extra_kopecks, discount_percent
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   for (const item of items) {
     if (item.qty <= 0) continue;
     const isManual = !!item.isManual || !item.serviceId;
+    const discountPercent = clampDiscountPercent(item.discountPercent);
 
     if (isManual) {
       const name = String(item.name ?? "").trim();
       if (!name) continue;
-      const price = Math.max(0, Math.round(item.priceKopecks ?? 0));
-      insert.run(nanoid(), orderId, "", name, price, item.qty, 1, price, 0);
+      const base = Math.max(0, Math.round(item.basePriceKopecks ?? item.priceKopecks ?? 0));
+      const price = linePriceKopecks(base, 0, discountPercent);
+      insert.run(nanoid(), orderId, "", name, price, item.qty, 1, base, 0, discountPercent);
       continue;
     }
 
@@ -284,13 +302,20 @@ export function setOrderItems(
         : catalogPrice;
     let extra = Math.max(0, Math.round(item.coefficientExtraKopecks ?? 0));
     if (!svc.coefficient_enabled) extra = 0;
-    const price =
-      item.priceKopecks != null && Number.isFinite(item.priceKopecks)
-        ? Math.max(base, Math.round(item.priceKopecks))
-        : base + extra;
-    extra = Math.max(0, price - base);
+    const price = linePriceKopecks(base, extra, discountPercent);
 
-    insert.run(nanoid(), orderId, svc.id, svc.name, price, item.qty, 0, base, extra);
+    insert.run(
+      nanoid(),
+      orderId,
+      svc.id,
+      svc.name,
+      price,
+      item.qty,
+      0,
+      base,
+      extra,
+      discountPercent
+    );
   }
 
   db.prepare("UPDATE orders SET discount_id = ?, updated_at = ? WHERE id = ?").run(
@@ -319,7 +344,7 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
 
   const items = db
     .prepare(
-      `SELECT id, service_id, qty, is_manual, coefficient_extra_kopecks
+      `SELECT id, service_id, qty, is_manual, coefficient_extra_kopecks, discount_percent
        FROM order_items WHERE order_id = ?`
     )
     .all(orderId) as {
@@ -328,6 +353,7 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
     qty: number;
     is_manual: number;
     coefficient_extra_kopecks: number;
+    discount_percent: number;
   }[];
 
   for (const item of items) {
@@ -337,10 +363,12 @@ export function setOrderVehicleClass(orderId: string, classId: string) {
       db.prepare("DELETE FROM order_items WHERE id = ?").run(item.id);
     } else {
       const extra = Math.max(0, item.coefficient_extra_kopecks ?? 0);
+      const discountPercent = clampDiscountPercent(item.discount_percent);
+      const finalPrice = linePriceKopecks(price, extra, discountPercent);
       db.prepare(
-        `UPDATE order_items SET base_price_kopecks = ?, price_kopecks = ?, coefficient_extra_kopecks = ?
-         WHERE id = ?`
-      ).run(price, price + extra, extra, item.id);
+        `UPDATE order_items SET base_price_kopecks = ?, price_kopecks = ?, coefficient_extra_kopecks = ?,
+         discount_percent = ? WHERE id = ?`
+      ).run(price, finalPrice, extra, discountPercent, item.id);
     }
   }
 

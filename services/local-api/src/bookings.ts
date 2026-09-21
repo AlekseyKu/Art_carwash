@@ -254,6 +254,33 @@ export function listBookingsForDate(date: string): BookingPayload[] {
   return rows.map(bookingRowToPayload);
 }
 
+/** Ближайшая активная запись из PWA + метка свежести для индикатора на кассе. */
+export function getPwaBookingSummary() {
+  const nowIso = new Date().toISOString();
+  const rows = db
+    .prepare(
+      `SELECT * FROM bookings
+       WHERE source = 'pwa'
+         AND status IN ('booked', 'arrived')
+         AND ends_at > ?
+       ORDER BY starts_at ASC`
+    )
+    .all(nowIso) as BookingRow[];
+
+  const latest = db
+    .prepare(
+      `SELECT MAX(created_at) as m FROM bookings
+       WHERE source = 'pwa' AND status IN ('booked', 'arrived')`
+    )
+    .get() as { m: string | null };
+
+  return {
+    next: rows[0] ? bookingRowToPayload(rows[0]) : null,
+    upcomingCount: rows.length,
+    latestCreatedAt: latest?.m ?? null,
+  };
+}
+
 export function getBooking(id: string): BookingPayload | null {
   const row = db.prepare("SELECT * FROM bookings WHERE id = ?").get(id) as BookingRow | undefined;
   return row ? bookingRowToPayload(row) : null;

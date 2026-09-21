@@ -61,6 +61,7 @@ import {
   createKassaBooking,
   dayCalendarGrid,
   getBooking,
+  getPwaBookingSummary,
   initLocalBookingSchema,
   markBookingArrived,
 } from "./bookings.js";
@@ -372,13 +373,24 @@ app.get<{ Querystring: { query?: string; limit?: string } }>("/api/clients", asy
   return { clients };
 });
 
-app.post<{ Body: { plate?: string; phone?: string; name?: string; id?: string } }>(
-  "/api/clients",
-  async (req) => {
-    requireWasher(req);
-    return upsertClient(req.body ?? {});
-  }
-);
+app.post<{
+  Body: {
+    plate?: string;
+    phone?: string;
+    name?: string;
+    id?: string;
+    vehicles?: {
+      id?: string;
+      plateNumber: string;
+      classId?: string | null;
+      nickname?: string | null;
+      isDefault?: boolean;
+    }[];
+  };
+}>("/api/clients", async (req) => {
+  requireWasher(req);
+  return upsertClient(req.body ?? {});
+});
 
 app.delete<{ Params: { id: string } }>("/api/clients/:id", async (req) => {
   requireWasher(req);
@@ -392,6 +404,11 @@ app.get<{ Querystring: { date?: string } }>("/api/bookings", async (req) => {
   const date = (req.query.date ?? mskDateString()).trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("date=YYYY-MM-DD");
   return dayCalendarGrid(date);
+});
+
+app.get("/api/bookings/pwa-summary", async (req) => {
+  requireWasher(req);
+  return getPwaBookingSummary();
 });
 
 app.get<{ Params: { id: string } }>("/api/bookings/:id", async (req) => {

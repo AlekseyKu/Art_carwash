@@ -1,6 +1,6 @@
 import { BRAND_NAME, formatRub, type ShiftReport } from "@art/shared";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   api,
   getWasherToken,
@@ -9,6 +9,7 @@ import {
   type OrderDto,
   type OrderItemInput,
   type ClientDto,
+  type BookingDto,
   type ShiftDto,
   type ShiftReportDto,
   type VehicleClassDto,
@@ -33,14 +34,104 @@ type CartLine = {
   qty: number;
   basePriceKopecks: number;
   coefficientExtraKopecks: number;
+  discountPercent: number;
   priceKopecks: number;
   isManual: boolean;
   coefficientEnabled?: boolean;
   coefficientStepKopecks?: number;
+  /** Скидка на позицию только для вкладок Услуги / Доп.услуги */
+  lineDiscountEnabled?: boolean;
 };
 
 /** Черновик всегда на одном «посту» — выбор постов в UI убран. */
 const DRAFT_POST_ID = 1;
+const PWA_BOOKING_SEEN_KEY = "art_pwa_booking_seen_at";
+
+const LINE_DISCOUNT_PRESETS = [10, 25, 50] as const;
+
+function readPwaSeenAt(): string | null {
+  try {
+    return localStorage.getItem(PWA_BOOKING_SEEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writePwaSeenAt(iso: string) {
+  try {
+    localStorage.setItem(PWA_BOOKING_SEEN_KEY, iso);
+  } catch {
+    /* ignore */
+  }
+}
+
+function formatPwaNextLabel(startsAt: string): string {
+  const start = new Date(startsAt);
+  const today = mskDateParts();
+  const day = mskDateParts(start);
+  const time = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(start);
+
+  if (day.date === today.date) return `сегодня ${time}`;
+
+  const tomorrow = new Date(`${today.date}T12:00:00+03:00`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  const tomorrowDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(tomorrow);
+  if (day.date === tomorrowDate) return `завтра ${time}`;
+
+  const short = new Intl.DateTimeFormat("ru-RU", {
+    timeZone: "Europe/Moscow",
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(start);
+  return `${short} · ${time}`;
+}
+
+function mskDateParts(d = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "0";
+  return {
+    date: `${get("year")}-${get("month")}-${get("day")}`,
+  };
+}
+
+function clampDiscountPercent(raw: unknown): number {
+  const n = Math.round(Number(raw) || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(100, Math.max(0, n));
+}
+
+function lineGrossKopecks(line: Pick<CartLine, "basePriceKopecks" | "coefficientExtraKopecks">) {
+  return Math.max(0, line.basePriceKopecks) + Math.max(0, line.coefficientExtraKopecks);
+}
+
+function priceWithLineDiscount(
+  base: number,
+  extra: number,
+  discountPercent: number
+): number {
+  const gross = Math.max(0, base) + Math.max(0, extra);
+  const pct = clampDiscountPercent(discountPercent);
+  return Math.round((gross * (100 - pct)) / 100);
+}
+
+function isLineDiscountTab(slug: string | undefined) {
+  return slug === "services" || slug === "extra-services";
+}
 
 function qtyFromLines(lines: CartLine[]): Record<string, number> {
   const map: Record<string, number> = {};
@@ -57,11 +148,13 @@ function linesFromOrder(o: OrderDto, cat: Catalog | null): CartLine[] {
       !isManual && i.serviceId
         ? cat?.services.find((s) => s.id === i.serviceId)
         : undefined;
+    const tabSlug = svc ? cat?.tabs.find((t) => t.id === svc.tabId)?.slug : undefined;
     const extra = Math.max(0, i.coefficientExtraKopecks ?? 0);
     const base =
       i.basePriceKopecks != null
         ? Math.max(0, i.basePriceKopecks)
         : Math.max(0, i.priceKopecks - extra);
+    const discountPercent = clampDiscountPercent(i.discountPercent);
     return {
       key: isManual ? (i.id ?? `manual-${idx}-${i.nameSnapshot}`) : String(i.serviceId),
       serviceId: isManual ? null : i.serviceId,
@@ -70,10 +163,12 @@ function linesFromOrder(o: OrderDto, cat: Catalog | null): CartLine[] {
       qty: i.qty,
       basePriceKopecks: base,
       coefficientExtraKopecks: extra,
+      discountPercent,
       priceKopecks: i.priceKopecks,
       isManual,
       coefficientEnabled: Boolean(svc?.coefficientEnabled) && !isManual,
       coefficientStepKopecks: svc?.coefficientStepKopecks ?? 5000,
+      lineDiscountEnabled: !isManual && isLineDiscountTab(tabSlug),
     };
   });
 }
@@ -86,6 +181,7 @@ function toOrderItemInputs(lines: CartLine[]): OrderItemInput[] {
     priceKopecks: l.priceKopecks,
     basePriceKopecks: l.basePriceKopecks,
     coefficientExtraKopecks: l.coefficientExtraKopecks,
+    discountPercent: l.lineDiscountEnabled || l.isManual ? l.discountPercent : 0,
     isManual: l.isManual,
   }));
 }
@@ -102,6 +198,8 @@ export function PosPage() {
   const [order, setOrder] = useState<OrderDto | null>(null);
   const [qty, setQty] = useState<Record<string, number>>({});
   const [cartLines, setCartLines] = useState<CartLine[]>([]);
+  const [lineDiscountKey, setLineDiscountKey] = useState<string | null>(null);
+  const [lineDiscountManual, setLineDiscountManual] = useState("");
   const [staffWasherIds, setStaffWasherIds] = useState<string[]>([]);
   const [discountId, setDiscountId] = useState<string | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
@@ -132,8 +230,16 @@ export function PosPage() {
   const [closeReport, setCloseReport] = useState<ShiftReportDto | null>(null);
   const [shiftConfirm, setShiftConfirm] = useState<"open" | "close" | null>(null);
   const [vehicleClassId, setVehicleClassId] = useState<string | null>(null);
+  const [pwaNext, setPwaNext] = useState<BookingDto | null>(null);
+  const [pwaLatestCreatedAt, setPwaLatestCreatedAt] = useState<string | null>(null);
+  const [pwaSeenAt, setPwaSeenAt] = useState<string | null>(() => readPwaSeenAt());
+  const navigate = useNavigate();
 
   const vehicleClasses = catalog?.vehicleClasses ?? [];
+
+  const pwaHasNew = Boolean(
+    pwaLatestCreatedAt && (!pwaSeenAt || pwaLatestCreatedAt > pwaSeenAt)
+  );
 
   const selectedClass: VehicleClassDto | null = useMemo(() => {
     if (!vehicleClasses.length) return null;
@@ -152,6 +258,8 @@ export function PosPage() {
     setCatalog(null);
     setQty({});
     setCartLines([]);
+    setLineDiscountKey(null);
+    setLineDiscountManual("");
     setStaffWasherIds([]);
     setDiscountId(null);
     setPayOpen(false);
@@ -164,6 +272,8 @@ export function PosPage() {
     setClientSearchOpen(false);
     setAttachedClient(null);
     setVehicleClassId(null);
+    setPwaNext(null);
+    setPwaLatestCreatedAt(null);
     setWasherName("");
     setShift(null);
     setOpenShiftPrompt(false);
@@ -261,6 +371,29 @@ export function PosPage() {
     });
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    const loadPwa = () => {
+      void api
+        .pwaBookingSummary(token)
+        .then((r) => {
+          if (cancelled) return;
+          setPwaNext(r.next);
+          setPwaLatestCreatedAt(r.latestCreatedAt);
+        })
+        .catch((e) => {
+          if (isUnauthorized(e)) forceLogout(e.message);
+        });
+    };
+    loadPwa();
+    const id = window.setInterval(loadPwa, 20_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [token]);
+
   const subtotal = useMemo(
     () => cartLines.reduce((s, line) => s + line.priceKopecks * line.qty, 0),
     [cartLines]
@@ -291,13 +424,16 @@ export function PosPage() {
         if (line.isManual || !line.serviceId) return line;
         const svc = catalog.services.find((s) => s.id === line.serviceId);
         if (!svc) return line;
+        const tabSlug = catalog.tabs.find((t) => t.id === svc.tabId)?.slug;
         const coefficientEnabled = Boolean(svc.coefficientEnabled);
         const coefficientStepKopecks = svc.coefficientStepKopecks ?? 5000;
         const description = svc.description ?? "";
+        const lineDiscountEnabled = isLineDiscountTab(tabSlug);
         if (
           line.coefficientEnabled === coefficientEnabled &&
           line.coefficientStepKopecks === coefficientStepKopecks &&
-          (line.description ?? "") === description
+          (line.description ?? "") === description &&
+          line.lineDiscountEnabled === lineDiscountEnabled
         ) {
           return line;
         }
@@ -307,6 +443,7 @@ export function PosPage() {
           description,
           coefficientEnabled,
           coefficientStepKopecks,
+          lineDiscountEnabled,
         };
       });
       return changed ? next : prev;
@@ -349,6 +486,7 @@ export function PosPage() {
     const svc = catalog?.services.find((s) => s.id === id);
     if (!svc) return;
     const servicesTabId = catalog?.tabs.find((t) => t.slug === "services")?.id;
+    const tabSlug = catalog?.tabs.find((t) => t.id === svc.tabId)?.slug;
     const isMainService = Boolean(servicesTabId && svc.tabId === servicesTabId);
     const exists = cartLines.some((l) => l.serviceId === id);
     const newLine: CartLine = {
@@ -359,10 +497,12 @@ export function PosPage() {
       qty: 1,
       basePriceKopecks: svc.priceKopecks,
       coefficientExtraKopecks: 0,
+      discountPercent: 0,
       priceKopecks: svc.priceKopecks,
       isManual: false,
       coefficientEnabled: Boolean(svc.coefficientEnabled),
       coefficientStepKopecks: svc.coefficientStepKopecks ?? 5000,
+      lineDiscountEnabled: isLineDiscountTab(tabSlug),
     };
     let next: CartLine[];
     if (exists) {
@@ -386,6 +526,10 @@ export function PosPage() {
   }
 
   function removeLine(key: string) {
+    if (lineDiscountKey === key) {
+      setLineDiscountKey(null);
+      setLineDiscountManual("");
+    }
     const next = cartLines.filter((l) => l.key !== key);
     setCartLines(next);
     setQty(qtyFromLines(next));
@@ -400,11 +544,41 @@ export function PosPage() {
       return {
         ...line,
         coefficientExtraKopecks: extra,
-        priceKopecks: line.basePriceKopecks + extra,
+        priceKopecks: priceWithLineDiscount(line.basePriceKopecks, extra, line.discountPercent),
       };
     });
     setCartLines(next);
     void persist(next, discountId, staffWasherIds);
+  }
+
+  function setLineDiscount(key: string, percent: number) {
+    const pct = clampDiscountPercent(percent);
+    const next = cartLines.map((line) => {
+      if (line.key !== key || !line.lineDiscountEnabled) return line;
+      return {
+        ...line,
+        discountPercent: pct,
+        priceKopecks: priceWithLineDiscount(
+          line.basePriceKopecks,
+          line.coefficientExtraKopecks,
+          pct
+        ),
+      };
+    });
+    setCartLines(next);
+    setLineDiscountManual(pct ? String(pct) : "");
+    void persist(next, discountId, staffWasherIds);
+  }
+
+  function openLineDiscount(line: CartLine) {
+    if (!line.lineDiscountEnabled) return;
+    if (lineDiscountKey === line.key) {
+      setLineDiscountKey(null);
+      setLineDiscountManual("");
+      return;
+    }
+    setLineDiscountKey(line.key);
+    setLineDiscountManual(line.discountPercent ? String(line.discountPercent) : "");
   }
 
   function toggleStaffWasher(id: string) {
@@ -437,9 +611,11 @@ export function PosPage() {
         qty: 1,
         basePriceKopecks: priceKopecks,
         coefficientExtraKopecks: 0,
+        discountPercent: 0,
         priceKopecks,
         isManual: true,
         coefficientEnabled: false,
+        lineDiscountEnabled: false,
       },
     ];
     setCartLines(next);
@@ -823,6 +999,7 @@ export function PosPage() {
         {error && <p style={{ color: "var(--danger)" }}>{error}</p>}
 
         <div className="pos-toolbar">
+          <div className="pos-toolbar-primary">
           <button
             type="button"
             className="icon-btn"
@@ -888,6 +1065,38 @@ export function PosPage() {
             </button>
           </div>
 
+            <button
+              type="button"
+              className={`pwa-next-chip${pwaHasNew ? " pwa-next-chip--new" : ""}${
+                !pwaNext ? " pwa-next-chip--empty" : ""
+              }`}
+              title={
+                pwaNext
+                  ? `Ближайшая запись PWA${pwaHasNew ? " · новая" : ""}`
+                  : "Нет ближайших записей из PWA"
+              }
+              onClick={() => {
+                const stamp = pwaLatestCreatedAt ?? new Date().toISOString();
+                writePwaSeenAt(stamp);
+                setPwaSeenAt(stamp);
+                if (pwaNext) {
+                  const day = mskDateParts(new Date(pwaNext.startsAt)).date;
+                  navigate(
+                    `/calendar?date=${encodeURIComponent(day)}&booking=${encodeURIComponent(pwaNext.id)}`
+                  );
+                } else {
+                  navigate("/calendar");
+                }
+              }}
+            >
+              <span className="pwa-next-chip__label">PWA</span>
+              <span className="pwa-next-chip__value">
+                {pwaNext ? formatPwaNextLabel(pwaNext.startsAt) : "нет записей"}
+              </span>
+              {pwaHasNew ? <span className="pwa-next-chip__badge" aria-hidden="true" /> : null}
+            </button>
+          </div>
+
           <div className="pos-toolbar-nav" aria-label="Разделы">
             <ClientSearchControl
               open={clientSearchOpen}
@@ -900,25 +1109,6 @@ export function PosPage() {
               onApply={(c) => void applyClient(c)}
               onClearAttached={() => void clearAttachedClient()}
             />
-            <Link to="/calendar" className="icon-btn" aria-label="Календарь" title="Календарь">
-              <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect
-                  x="3"
-                  y="5"
-                  width="18"
-                  height="16"
-                  rx="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M3 10h18M8 3v4M16 3v4"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </Link>
             <Link to="/clients" className="icon-btn" aria-label="Клиенты" title="Клиенты">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <circle cx="9" cy="8" r="3.25" stroke="currentColor" strokeWidth="2" />
@@ -1013,49 +1203,95 @@ export function PosPage() {
                   Нет выбранных позиций
                 </p>
               ) : (
-                cartLines.map((line) => (
-                  <div key={line.key} className="pos-cart-line">
-                    <div className="pos-cart-line-text">
-                      <span className="pos-cart-line-name">{line.name}</span>
-                      {line.description ? (
-                        <span className="pos-cart-line-desc">{line.description}</span>
-                      ) : null}
-                      {line.coefficientExtraKopecks > 0 ? (
-                        <span className="pos-cart-line-coeff">
-                          Коэффициент +{line.coefficientExtraKopecks / 100} руб
-                        </span>
-                      ) : null}
-                      {line.qty > 1 ? (
-                        <span className="pos-cart-line-meta muted">
-                          {formatRub(line.priceKopecks)} × {line.qty}
-                        </span>
-                      ) : null}
-                      {line.coefficientEnabled ? (
-                        <div className="pos-cart-coeff-controls">
-                          <button
-                            type="button"
-                            className="pos-cart-coeff-btn"
-                            aria-label="Уменьшить коэффициент"
-                            disabled={line.coefficientExtraKopecks <= 0}
-                            onClick={() => adjustCoefficient(line.key, -1)}
-                          >
-                            −
-                          </button>
-                          <button
-                            type="button"
-                            className="pos-cart-coeff-btn"
-                            aria-label="Увеличить коэффициент"
-                            onClick={() => adjustCoefficient(line.key, 1)}
-                          >
-                            +
-                          </button>
+                cartLines.map((line) => {
+                  const gross = lineGrossKopecks(line);
+                  const discountOpen = lineDiscountKey === line.key;
+                  const hasLineDiscount = line.lineDiscountEnabled && line.discountPercent > 0;
+                  return (
+                    <div
+                      key={line.key}
+                      className={`pos-cart-line${discountOpen ? " pos-cart-line--open" : ""}${
+                        hasLineDiscount ? " pos-cart-line--discounted" : ""
+                      }`}
+                    >
+                      <div
+                        className={`pos-cart-line-main${
+                          line.lineDiscountEnabled ? " pos-cart-line-main--tap" : ""
+                        }`}
+                        role={line.lineDiscountEnabled ? "button" : undefined}
+                        tabIndex={line.lineDiscountEnabled ? 0 : undefined}
+                        onClick={() => openLineDiscount(line)}
+                        onKeyDown={(e) => {
+                          if (!line.lineDiscountEnabled) return;
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openLineDiscount(line);
+                          }
+                        }}
+                      >
+                        <div className="pos-cart-line-text">
+                          <span className="pos-cart-line-name">{line.name}</span>
+                          {line.description ? (
+                            <span className="pos-cart-line-desc">{line.description}</span>
+                          ) : null}
+                          {line.coefficientExtraKopecks > 0 ? (
+                            <span className="pos-cart-line-coeff">
+                              Коэффициент +{line.coefficientExtraKopecks / 100} руб
+                            </span>
+                          ) : null}
+                          {hasLineDiscount ? (
+                            <span className="pos-cart-line-discount-badge">
+                              {line.discountPercent >= 100
+                                ? "Подарок"
+                                : `Скидка −${line.discountPercent}%`}
+                            </span>
+                          ) : line.lineDiscountEnabled ? (
+                            <span className="pos-cart-line-meta muted">Скидка на позицию…</span>
+                          ) : null}
+                          {line.qty > 1 ? (
+                            <span className="pos-cart-line-meta muted">
+                              {formatRub(line.priceKopecks)} × {line.qty}
+                            </span>
+                          ) : null}
+                          {line.coefficientEnabled ? (
+                            <div className="pos-cart-coeff-controls">
+                              <button
+                                type="button"
+                                className="pos-cart-coeff-btn"
+                                aria-label="Уменьшить коэффициент"
+                                disabled={line.coefficientExtraKopecks <= 0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  adjustCoefficient(line.key, -1);
+                                }}
+                              >
+                                −
+                              </button>
+                              <button
+                                type="button"
+                                className="pos-cart-coeff-btn"
+                                aria-label="Увеличить коэффициент"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  adjustCoefficient(line.key, 1);
+                                }}
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </div>
-                    <div className="pos-cart-line-aside">
-                      <strong className="pos-cart-line-sum">
-                        {formatRub(line.priceKopecks * line.qty)}
-                      </strong>
+                        <div className="pos-cart-line-aside">
+                          {hasLineDiscount ? (
+                            <span className="pos-cart-line-was muted">
+                              {formatRub(gross * line.qty)}
+                            </span>
+                          ) : null}
+                          <strong className="pos-cart-line-sum">
+                            {formatRub(line.priceKopecks * line.qty)}
+                          </strong>
+                        </div>
+                      </div>
                       <button
                         type="button"
                         className="pos-cart-line-remove"
@@ -1065,9 +1301,67 @@ export function PosPage() {
                       >
                         ×
                       </button>
+                      {discountOpen ? (
+                        <div className="pos-cart-line-discount">
+                          <div className="pos-cart-line-discount-presets">
+                            <button
+                              type="button"
+                              className={`pos-cart-disc-chip${
+                                line.discountPercent === 0 ? " active" : ""
+                              }`}
+                              onClick={() => setLineDiscount(line.key, 0)}
+                            >
+                              0%
+                            </button>
+                            {LINE_DISCOUNT_PRESETS.map((p) => (
+                              <button
+                                key={p}
+                                type="button"
+                                className={`pos-cart-disc-chip${
+                                  line.discountPercent === p ? " active" : ""
+                                }`}
+                                onClick={() => setLineDiscount(line.key, p)}
+                              >
+                                {p}%
+                              </button>
+                            ))}
+                            <button
+                              type="button"
+                              className={`pos-cart-disc-chip${
+                                line.discountPercent === 100 ? " active" : ""
+                              }`}
+                              onClick={() => setLineDiscount(line.key, 100)}
+                            >
+                              Подарок
+                            </button>
+                          </div>
+                          <label className="pos-cart-line-discount-manual">
+                            <span className="muted">Вручную, %</span>
+                            <TouchField
+                              title="Скидка %"
+                              mode="numeric"
+                              placeholder="0–100"
+                              value={lineDiscountManual}
+                              onChange={(v) => {
+                                const cleaned = v.replace(/[^\d]/g, "").slice(0, 3);
+                                setLineDiscountManual(cleaned);
+                              }}
+                            />
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() =>
+                                setLineDiscount(line.key, Number(lineDiscountManual || 0))
+                              }
+                            >
+                              Применить
+                            </button>
+                          </label>
+                        </div>
+                      ) : null}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -1602,7 +1896,9 @@ function ClientSearchControl({
           {attached && !query && (
             <div className="client-search__attached">
               <span>
-                {attached.plateNumber ?? "—"}
+                {(attached.vehicles?.length
+                  ? attached.vehicles.map((v) => v.plateNumber).join(" · ")
+                  : attached.plateNumber) ?? "—"}
                 {attached.name ? ` · ${attached.name}` : ""}
                 {attached.phone ? ` · ${attached.phone}` : ""}
               </span>
@@ -1621,7 +1917,11 @@ function ClientSearchControl({
                   className="client-search__hit"
                   onClick={() => onApply(c)}
                 >
-                  <strong>{c.plateNumber ?? "без номера"}</strong>
+                  <strong>
+                    {(c.vehicles?.length
+                      ? c.vehicles.map((v) => v.plateNumber).join(" · ")
+                      : c.plateNumber) ?? "без номера"}
+                  </strong>
                   <span>{[c.name, c.phone].filter(Boolean).join(" · ") || "Клиент"}</span>
                 </button>
               ))}

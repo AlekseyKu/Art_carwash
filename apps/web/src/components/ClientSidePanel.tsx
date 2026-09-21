@@ -148,7 +148,11 @@ export function ClientSidePanel({
             <div className="muted" style={{ fontSize: "0.75rem" }}>
               Госномер
             </div>
-            <div className="client-plate">{client.plateNumber ?? "—"}</div>
+            <div className="client-plate">
+              {(client.vehicles?.length
+                ? client.vehicles.map((v) => v.plateNumber).join(" · ")
+                : client.plateNumber) ?? "—"}
+            </div>
           </div>
           <div>
             <div className="muted" style={{ fontSize: "0.75rem" }}>

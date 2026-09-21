@@ -209,6 +209,9 @@ export function migrate() {
       "ALTER TABLE order_items ADD COLUMN coefficient_extra_kopecks INTEGER NOT NULL DEFAULT 0"
     );
   }
+  if (!itemCols.has("discount_percent")) {
+    db.exec("ALTER TABLE order_items ADD COLUMN discount_percent INTEGER NOT NULL DEFAULT 0");
+  }
   // Ручные позиции: service_id может быть пустым (SQLite NOT NULL уже стоит — пишем '')
   db.exec(`
     CREATE TABLE IF NOT EXISTS staff_washers (
